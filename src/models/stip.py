@@ -663,11 +663,15 @@ class STIPPostProcess(nn.Module):
             out_obj_logits = outputs['pred_logits'][..., _valid_obj_ids]
             # tail classification score
             obj_scores, obj_labels = [], []
+            sub_scores, sub_labels = [], []
             for o_ids, lgts in zip(o_indices, out_obj_logits):
                 img_obj_scores, img_obj_labels = F.softmax(lgts[o_ids], -1)[..., :-1].max(-1)
                 obj_scores.append(img_obj_scores)
                 obj_labels.append(img_obj_labels)
-
+            for h_ids, lgts in zip(h_indices, out_obj_logits):
+                img_sub_scores, img_sub_labels = F.softmax(lgts[h_ids], -1)[..., :-1].max(-1)
+                sub_scores.append(img_sub_scores)
+                sub_labels.append(img_sub_labels)
             # actions
             out_verb_logits = outputs['pred_actions']
             verb_scores = [l.sigmoid() for l in out_verb_logits]
@@ -676,9 +680,12 @@ class STIPPostProcess(nn.Module):
 
             # accumulate results (iterate through interaction queries)
             results = []
-            for batch_idx, (os, ol, vs, box, h_idx, o_idx, vl) in enumerate(zip(obj_scores, obj_labels, verb_scores, boxes, h_indices, o_indices, verb_labels)):
+            for batch_idx, (os, sl, ol, vs, box, h_idx, o_idx, vl) in enumerate(zip(obj_scores, sub_labels, obj_labels, verb_scores, boxes, h_indices, o_indices, verb_labels)):
                 # label
-                sl = torch.full_like(ol, 0) # self.subject_category_id = 0 in HICO-DET
+                # sl = torch.full_like(ol, 0) # self.subject_category_id = 0 in HICO-DET
+
+
+
                 l = torch.cat((sl, ol))
                 # boxes
                 sb = box[h_idx, :]
