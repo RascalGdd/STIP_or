@@ -108,7 +108,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         # print("or_pred_img", or_pred_img)
         OR_GT.extend(or_gt_img)
         OR_PRED.extend(or_pred_img)
-
+        OR_GT = [inst.cpu() for inst in OR_GT]
 
     cls_report = classification_report(OR_GT, OR_PRED,
                                        target_names=["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"], output_dict=True)
