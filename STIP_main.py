@@ -58,7 +58,7 @@ def main(args):
     # args.num_actions = dataset_train.num_action()
     # args.action_names = dataset_train.get_actions()
 
-    args.num_classes = 91
+    args.num_classes = 11
     args.num_actions = 14
     args.action_names = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"]
 
@@ -134,7 +134,7 @@ def main(args):
                     mapped_state_dict[k.replace('detr.', '')] = v
             model_without_ddp.detr.load_state_dict(mapped_state_dict)
         else:
-            model_without_ddp.detr.load_state_dict(checkpoint['model'])
+            model_without_ddp.detr.load_state_dict(checkpoint['model'], strict=False)
 
     if args.resume:
         print(f"Loading model weights from args.resume={args.resume}")

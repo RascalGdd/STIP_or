@@ -127,7 +127,7 @@ class STIP(nn.Module):
             # >>>>>>>>>>>> relation proposal <<<<<<<<<<<<<<<
             probs = outputs_class[-1, imgid].softmax(-1)
             inst_scores, inst_labels = probs[:, :-1].max(-1)
-            human_instance_ids = torch.logical_and(inst_scores>0.5, inst_labels==1).nonzero(as_tuple=False)
+            human_instance_ids = torch.logical_and(inst_scores > 0.5, inst_labels <= 10).nonzero(as_tuple=False)
             bg_instance_ids = (probs[:, -1] > 1)
             if self.args.apply_nms_on_detr and not self.training:
                 suppress_ids = self.apply_nms(inst_scores, inst_labels, outputs_coord[-1, imgid])
