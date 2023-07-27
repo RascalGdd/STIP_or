@@ -80,6 +80,8 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     _, indices = np.unique(img_ids, return_index=True)
     preds = [img_preds for i, img_preds in enumerate(preds) if i in indices]
     gts = [img_gts for i, img_gts in enumerate(gts) if i in indices]
+    
+    
 
     # now 4DOR evaluation!
     OR_GT = []
