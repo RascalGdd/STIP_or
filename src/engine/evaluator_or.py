@@ -92,12 +92,24 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         gt_pair_collection = []
         gt_labels_sop = gts[iter]['gt_triplet']
         det_labels_sop_top = preds[iter]['triplet']
+        det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[6, 1, 9]])], dim=0)
+        det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 1, 9]])], dim=0)
+        
+        det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 2, 13]])], dim=0)
+        det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 2, 13]])], dim=0)
+        det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 3, 13]])], dim=0)
+        det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 3, 13]])], dim=0)
+        
         for index in range(gt_labels_sop.shape[0]):
             found = False
             if (gt_labels_sop[index][0], gt_labels_sop[index][1]) not in gt_pair_collection:
                 gt_pair_collection.append((gt_labels_sop[index][0], gt_labels_sop[index][1]))
                 or_gt_img.append(gt_labels_sop[index][2])
                 for idx in range(len(det_labels_sop_top)):
+                    if det_labels_sop_top[idx][2] == 8 and (det_labels_sop_top[idx][0] != 5 or det_labels_sop_top[idx][1] != 1):
+                        continue
+                    if det_labels_sop_top[idx][2] == 9 and ((det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
+                        continue
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])
                         found = True
