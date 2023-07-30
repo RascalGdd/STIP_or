@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from src.util.misc import accuracy, is_dist_avail_and_initialized, get_world_size
 from src.models.stip_utils import check_annotation
 import time
+import copy
+from .utils import sigmoid_focal_loss, MLP
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -343,24 +345,41 @@ class STIPCriterion(nn.Module):
 
         if args.train_detr:
             self.num_classes = args.num_classes
-            empty_weight = torch.ones(self.num_classes + 1)
-            empty_weight[-1] = args.eos_coef
-            self.register_buffer('empty_weight', empty_weight)
 
             self.detr_losses = ['labels', 'boxes', 'cardinality']
             det_weights = {'loss_ce': 1 * args.finetune_detr_weight, 'loss_bbox': args.bbox_loss_coef * args.finetune_detr_weight, 'loss_giou': args.giou_loss_coef * args.finetune_detr_weight}
-            if args.aux_loss:
-                aux_weights = {}
-                for i in range(args.dec_layers - 1):
-                    aux_weights.update({k + f'_{i}': v for k, v in det_weights.items()})
-                det_weights.update(aux_weights)
+            clean_weight_dict_wo_dn = copy.deepcopy(det_weights)
+
+            # for DN training
+            det_weights['loss_ce_dn'] = 1 * args.finetune_detr_weight
+            det_weights['loss_bbox_dn'] = args.bbox_loss_coef * args.finetune_detr_weight
+            det_weights['loss_giou_dn'] = args.giou_loss_coef * args.finetune_detr_weight
+            clean_weight_dict = copy.deepcopy(det_weights)
+
+            aux_weights = {}
+            for i in range(args.dec_layers - 1):
+                aux_weights.update({k + f'_{i}': v for k, v in clean_weight_dict.items()})
+            det_weights.update(aux_weights)
+
+            interm_weight_dict = {}
+            no_interm_box_loss = False
+            _coeff_weight_dict = {
+                'loss_ce': 1.0 * args.finetune_detr_weight,
+                'loss_bbox': 1.0 * args.finetune_detr_weight if not no_interm_box_loss else 0.0,
+                'loss_giou': 1.0 * args.finetune_detr_weight if not no_interm_box_loss else 0.0,
+            }
+
+            interm_loss_coef = 1.0
+            interm_weight_dict.update({k + f'_interm': v * interm_loss_coef * _coeff_weight_dict[k] for k, v in
+                                       clean_weight_dict_wo_dn.items()})
+            det_weights.update(interm_weight_dict)
             self.weight_dict.update(det_weights)
 
     #######################################################################################################################
     # * DETR Losses
     #######################################################################################################################
     def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
-        """Classification loss (NLL)
+        """Classification loss (Binary focal loss)
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
         """
         assert 'pred_logits' in outputs
@@ -368,10 +387,16 @@ class STIPCriterion(nn.Module):
 
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
-        target_classes = torch.full(src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device)
+        target_classes = torch.full(src_logits.shape[:2], self.num_classes,
+                                    dtype=torch.int64, device=src_logits.device)
         target_classes[idx] = target_classes_o
 
-        loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
+        target_classes_onehot = torch.zeros([src_logits.shape[0], src_logits.shape[1], src_logits.shape[2]+1],
+                                            dtype=src_logits.dtype, layout=src_logits.layout, device=src_logits.device)
+        target_classes_onehot.scatter_(2, target_classes.unsqueeze(-1), 1)
+
+        target_classes_onehot = target_classes_onehot[:,:,:-1]
+        loss_ce = sigmoid_focal_loss(src_logits, target_classes_onehot, num_boxes, alpha=self.focal_alpha, gamma=2) * src_logits.shape[1]
         losses = {'loss_ce': loss_ce}
 
         if log:
@@ -412,6 +437,13 @@ class STIPCriterion(nn.Module):
             box_ops.box_cxcywh_to_xyxy(src_boxes),
             box_ops.box_cxcywh_to_xyxy(target_boxes)))
         losses['loss_giou'] = loss_giou.sum() / num_boxes
+
+        # calculate the x,y and h,w loss
+        with torch.no_grad():
+            losses['loss_xy'] = loss_bbox[..., :2].sum() / num_boxes
+            losses['loss_hw'] = loss_bbox[..., 2:].sum() / num_boxes
+
+
         return losses
 
     def _get_src_permutation_idx(self, indices):
@@ -484,18 +516,62 @@ class STIPCriterion(nn.Module):
         if self.args.train_detr:
             # Compute the average number of target boxes accross all nodes, for normalization purposes
             num_boxes = sum(len(t["labels"]) for t in targets)
-            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=device)
             if is_dist_avail_and_initialized():
                 torch.distributed.all_reduce(num_boxes)
             num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
 
             # Compute all the requested losses
+            losses = {}
+
+            # prepare for dn loss
+            dn_meta = outputs['dn_meta']
+
+            if self.training and dn_meta and 'output_known_lbs_bboxes' in dn_meta:
+                output_known_lbs_bboxes, single_pad, scalar = self.prep_for_dn(dn_meta)
+
+                dn_pos_idx = []
+                dn_neg_idx = []
+                for i in range(len(targets)):
+                    if len(targets[i]['labels']) > 0:
+                        t = torch.range(0, len(targets[i]['labels']) - 1).long().cuda()
+                        t = t.unsqueeze(0).repeat(scalar, 1)
+                        tgt_idx = t.flatten()
+                        output_idx = (torch.tensor(range(scalar)) * single_pad).long().cuda().unsqueeze(1) + t
+                        output_idx = output_idx.flatten()
+                    else:
+                        output_idx = tgt_idx = torch.tensor([]).long().cuda()
+
+                    dn_pos_idx.append((output_idx, tgt_idx))
+                    dn_neg_idx.append((output_idx + single_pad // 2, tgt_idx))
+
+                output_known_lbs_bboxes = dn_meta['output_known_lbs_bboxes']
+                l_dict = {}
+                for loss in self.detr_losses:
+                    kwargs = {}
+                    if 'labels' in loss:
+                        kwargs = {'log': False}
+                    l_dict.update(
+                        self.get_loss(loss, output_known_lbs_bboxes, targets, dn_pos_idx, num_boxes * scalar, **kwargs))
+
+                l_dict = {k + f'_dn': v for k, v in l_dict.items()}
+                losses.update(l_dict)
+            else:
+                l_dict = dict()
+                l_dict['loss_bbox_dn'] = torch.as_tensor(0.).to('cuda')
+                l_dict['loss_giou_dn'] = torch.as_tensor(0.).to('cuda')
+                l_dict['loss_ce_dn'] = torch.as_tensor(0.).to('cuda')
+                l_dict['loss_xy_dn'] = torch.as_tensor(0.).to('cuda')
+                l_dict['loss_hw_dn'] = torch.as_tensor(0.).to('cuda')
+                l_dict['cardinality_error_dn'] = torch.as_tensor(0.).to('cuda')
+                losses.update(l_dict)
+
             for loss in self.detr_losses:
-                loss_dict.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+                losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
 
             # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
             if 'aux_outputs' in outputs:
-                for i, aux_outputs in enumerate(outputs['aux_outputs']):
+                for idx, aux_outputs in enumerate(outputs['aux_outputs']):
                     indices = self.matcher(aux_outputs, targets)
                     for loss in self.detr_losses:
                         kwargs = {}
@@ -503,10 +579,69 @@ class STIPCriterion(nn.Module):
                             # Logging is enabled only for the last layer
                             kwargs = {'log': False}
                         l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
-                        l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
-                        loss_dict.update(l_dict)
+                        l_dict = {k + f'_{idx}': v for k, v in l_dict.items()}
+                        losses.update(l_dict)
 
-        return loss_dict
+                    if self.training and dn_meta and 'output_known_lbs_bboxes' in dn_meta:
+                        aux_outputs_known = output_known_lbs_bboxes['aux_outputs'][idx]
+                        l_dict = {}
+                        for loss in self.detr_losses:
+                            kwargs = {}
+                            if 'labels' in loss:
+                                kwargs = {'log': False}
+
+                            l_dict.update(
+                                self.get_loss(loss, aux_outputs_known, targets, dn_pos_idx, num_boxes * scalar,
+                                              **kwargs))
+
+                        l_dict = {k + f'_dn_{idx}': v for k, v in l_dict.items()}
+                        losses.update(l_dict)
+                    else:
+                        l_dict = dict()
+                        l_dict['loss_bbox_dn'] = torch.as_tensor(0.).to('cuda')
+                        l_dict['loss_giou_dn'] = torch.as_tensor(0.).to('cuda')
+                        l_dict['loss_ce_dn'] = torch.as_tensor(0.).to('cuda')
+                        l_dict['loss_xy_dn'] = torch.as_tensor(0.).to('cuda')
+                        l_dict['loss_hw_dn'] = torch.as_tensor(0.).to('cuda')
+                        l_dict['cardinality_error_dn'] = torch.as_tensor(0.).to('cuda')
+                        l_dict = {k + f'_{idx}': v for k, v in l_dict.items()}
+                        losses.update(l_dict)
+
+            # interm_outputs loss
+            if 'interm_outputs' in outputs:
+                interm_outputs = outputs['interm_outputs']
+                indices = self.matcher(interm_outputs, targets)
+                for loss in self.detr_losses:
+                    kwargs = {}
+                    if loss == 'labels':
+                        # Logging is enabled only for the last layer
+                        kwargs = {'log': False}
+                    l_dict = self.get_loss(loss, interm_outputs, targets, indices, num_boxes, **kwargs)
+                    l_dict = {k + f'_interm': v for k, v in l_dict.items()}
+                    losses.update(l_dict)
+
+            # enc output loss
+            if 'enc_outputs' in outputs:
+                for i, enc_outputs in enumerate(outputs['enc_outputs']):
+                    indices = self.matcher(enc_outputs, targets)
+                    for loss in self.detr_losses:
+                        kwargs = {}
+                        if loss == 'labels':
+                            # Logging is enabled only for the last layer
+                            kwargs = {'log': False}
+                        l_dict = self.get_loss(loss, enc_outputs, targets, indices, num_boxes, **kwargs)
+                        l_dict = {k + f'_enc_{i}': v for k, v in l_dict.items()}
+                        losses.update(l_dict)
+
+            return losses
+
+    def prep_for_dn(self,dn_meta):
+        output_known_lbs_bboxes = dn_meta['output_known_lbs_bboxes']
+        num_dn_groups,pad_size=dn_meta['num_dn_group'],dn_meta['pad_size']
+        assert pad_size % num_dn_groups==0
+        single_pad=pad_size//num_dn_groups
+
+        return output_known_lbs_bboxes,single_pad,num_dn_groups
 
     def proposal_loss(self, inputs, targets):
         # loss = focal_loss(inputs, targets, gamma=self.args.proposal_focal_loss_gamma, alpha=self.args.proposal_focal_loss_alpha)

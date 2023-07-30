@@ -280,9 +280,9 @@ if __name__ == '__main__':
     parser.add_argument('--use_prior_verb_label_mask', action='store_true', default=False)
     parser.add_argument('--relation_feature_map_from', default='backbone', help='backbone | detr_encoder')
     parser.add_argument('--use_query_fourier_encoding', action='store_true', default=False)
-    parser.add_argument('--img_folder', default='/cluster/work/cvl/denfan/diandian/gen_or/data/4dor/images/',
+    parser.add_argument('--img_folder', default='data/4dor/images/',
                         help='path')
-    parser.add_argument('--ann_path', default='/cluster/work/cvl/denfan/diandian/gen_or/data/4dor/',
+    parser.add_argument('--ann_path', default='data/4dor/',
                         help='path')
 
     args = parser.parse_args()
