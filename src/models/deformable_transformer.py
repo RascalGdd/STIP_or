@@ -1009,7 +1009,7 @@ def build_deformable_transformer(args):
         d_model=256,
         dropout=0.0,
         nhead=8,
-        num_queries=900,
+        num_queries=100,
         dim_feedforward=2048,
         num_encoder_layers=6,
         num_unicoder_layers=0,

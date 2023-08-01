@@ -187,6 +187,7 @@ def main(args):
     # Training starts here!
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
+        save_ckpt(args, model_without_ddp, optimizer, lr_scheduler, epoch, filename=f'checkpoint_{epoch}')
         if args.distributed:
             sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
@@ -241,6 +242,7 @@ def main(args):
 
 
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(
         'End-to-End Human Object Interaction training and evaluation script',
         parents=[get_args_parser()]

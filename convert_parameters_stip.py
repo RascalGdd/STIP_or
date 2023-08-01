@@ -47,7 +47,7 @@ def main(args):
 
     for k in list(ps['model'].keys()):
         # if len(k.split('.')) > 1 and k.split('.')[1] == 'decoder':
-        if "bbox_embed" in k or "class_embed" in k:
+        if "bbox_embed" in k or "class_embed" in k or "label_enc" in k:
             print(k)
             # ps['model'][k.replace('decoder', 'instance_decoder')] = ps['model'][k].clone()
             # ps['model'][k.replace('decoder', 'interaction_decoder')] = ps['model'][k].clone()
@@ -72,7 +72,7 @@ def main(args):
     # ps['model']['obj_class_embed.weight'] = ps['model']['class_embed.weight'].clone()[obj_ids]
     # ps['model']['obj_class_embed.bias'] = ps['model']['class_embed.bias'].clone()[obj_ids]
 
-    ps['model']['query_embed.weight'] = ps['model']['query_embed.weight'].clone()[:args.num_queries]
+    ps['model']['transformer.tgt_embed.weight'] = ps['model']['transformer.tgt_embed.weight'].clone()[:args.num_queries]
 
     torch.save(ps, args.save_path)
 

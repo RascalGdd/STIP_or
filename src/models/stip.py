@@ -7,11 +7,13 @@ from .transformer import TransformerDecoderLayer, TransformerDecoder
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
-from src.util.misc import accuracy, is_dist_avail_and_initialized, get_world_size
+from src.util.misc import accuracy, is_dist_avail_and_initialized, get_world_size, NestedTensor, nested_tensor_from_tensor_list, get_world_size, inverse_sigmoid
 from src.models.stip_utils import check_annotation
 import time
 import copy
 from .utils import sigmoid_focal_loss, MLP
+from .dn_components import prepare_for_cdn,dn_post_process
+
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -31,7 +33,7 @@ class STIP(nn.Module):
             if args.use_high_resolution_relation_feature_map:
                 relation_feature_map_dim = 1024
             else:
-                relation_feature_map_dim = 2048
+                relation_feature_map_dim = 512       # 512 is for dino, 2048 is for detr
         elif self.args.relation_feature_map_from == 'detr_encoder':
             relation_feature_map_dim = self.args.hidden_dim
 
@@ -82,18 +84,89 @@ class STIP(nn.Module):
         # >>>>>>>>>>>>  BACKBONE LAYERS  <<<<<<<<<<<<<<<
         features, pos = self.detr.backbone(samples)
         bs = features[-1].tensors.shape[0]
-        src, mask = features[-1].decompose()
-        assert mask is not None
-        # ----------------------------------------------
+        srcs = []
+        masks = []
+        for l, feat in enumerate(features):
+            src, mask = feat.decompose()
+            srcs.append(self.detr.input_proj[l](src))
+            masks.append(mask)
+            assert mask is not None
+        if self.detr.num_feature_levels > len(srcs):
+            _len_srcs = len(srcs)
+            for l in range(_len_srcs, self.detr.num_feature_levels):
+                if l == _len_srcs:
+                    src = self.detr.input_proj[l](features[-1].tensors)
+                else:
+                    src = self.detr.input_proj[l](srcs[-1])
+                m = samples.mask
+                mask = F.interpolate(m[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                pos_l = self.detr.backbone[1](NestedTensor(src, mask)).to(src.dtype)
+                srcs.append(src)
+                masks.append(mask)
+                pos.append(pos_l)
 
-        # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
-        hs, detr_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1])
+        if self.detr.dn_number > 0 or targets is not None:
+            input_query_label, input_query_bbox, attn_mask, dn_meta =\
+                prepare_for_cdn(dn_args=(targets, self.detr.dn_number, self.detr.dn_label_noise_ratio, self.detr.dn_box_noise_scale),
+                                training=self.detr.training,num_queries=self.detr.num_queries,num_classes=self.detr.num_classes,
+                                hidden_dim=self.detr.hidden_dim,label_enc=self.detr.label_enc)
+        else:
+            assert targets is None
+            input_query_bbox = input_query_label = attn_mask = dn_meta = None
+
+        hs, reference, detr_encoder_outs, ref_enc, init_box_proposal = self.detr.transformer(srcs, masks, input_query_bbox, pos,input_query_label,attn_mask)
         inst_repr = hs[-1]
         num_nodes = inst_repr.shape[1]
+        # In case num object=0
+        hs[0] += self.detr.label_enc.weight[0, 0]*0.0
 
-        # Prediction Heads for Object Detection
-        outputs_class = self.detr.class_embed(hs)
-        outputs_coord = self.detr.bbox_embed(hs).sigmoid()
+        # deformable-detr-like anchor update
+        # reference_before_sigmoid = inverse_sigmoid(reference[:-1]) # n_dec, bs, nq, 4
+        outputs_coord_list = []
+        for dec_lid, (layer_ref_sig, layer_bbox_embed, layer_hs) in enumerate(zip(reference[:-1], self.detr.bbox_embed, hs)):
+            layer_delta_unsig = layer_bbox_embed(layer_hs)
+            layer_outputs_unsig = layer_delta_unsig + inverse_sigmoid(layer_ref_sig)
+            layer_outputs_unsig = layer_outputs_unsig.sigmoid()
+            outputs_coord_list.append(layer_outputs_unsig)
+        outputs_coord_list = torch.stack(outputs_coord_list)
+
+        outputs_class = torch.stack([layer_cls_embed(layer_hs) for
+                                     layer_cls_embed, layer_hs in zip(self.detr.class_embed, hs)])
+        if self.detr.dn_number > 0 and dn_meta is not None:
+            outputs_class, outputs_coord = \
+                dn_post_process(outputs_class, outputs_coord_list,
+                                dn_meta,self.detr.aux_loss,self.detr._set_aux_loss)
+        else:
+            outputs_coord = outputs_coord_list
+        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+
+
+        # for encoder output
+        if detr_encoder_outs is not None:
+            # prepare intermediate outputs
+            interm_coord = ref_enc[-1]
+            interm_class = self.detr.transformer.enc_out_class_embed(detr_encoder_outs[-1])
+            out['interm_outputs'] = {'pred_logits': interm_class, 'pred_boxes': interm_coord}
+            out['interm_outputs_for_matching_pre'] = {'pred_logits': interm_class, 'pred_boxes': init_box_proposal}
+
+            # prepare enc outputs
+            if detr_encoder_outs.shape[0] > 1:
+                enc_outputs_coord = []
+                enc_outputs_class = []
+                for layer_id, (layer_box_embed, layer_class_embed, layer_hs_enc, layer_ref_enc) in enumerate(zip(self.detr.enc_bbox_embed, self.detr.enc_class_embed, detr_encoder_outs[:-1], ref_enc[:-1])):
+                    layer_enc_delta_unsig = layer_box_embed(layer_hs_enc)
+                    layer_enc_outputs_coord_unsig = layer_enc_delta_unsig + inverse_sigmoid(layer_ref_enc)
+                    layer_enc_outputs_coord = layer_enc_outputs_coord_unsig.sigmoid()
+
+                    layer_enc_outputs_class = layer_class_embed(layer_hs_enc)
+                    enc_outputs_coord.append(layer_enc_outputs_coord)
+                    enc_outputs_class.append(layer_enc_outputs_class)
+
+                out['enc_outputs'] = [
+                    {'pred_logits': a, 'pred_boxes': b} for a, b in zip(enc_outputs_class, enc_outputs_coord)
+                ]
+
+        out['dn_meta'] = dn_meta
         # -----------------------------------------------
 
         det2gt_indices = None
@@ -102,6 +175,7 @@ class STIP(nn.Module):
             det2gt_indices = self.detr_matcher(detr_outs, targets)
             gt_rel_pairs = []
             for (ds, gs), t in zip(det2gt_indices, targets):
+                ds = ds.to("cuda")
                 gt2det_map = torch.zeros(len(gs)).to(device=ds.device, dtype=ds.dtype)
                 gt2det_map[gs] = ds
                 gt_rels = gt2det_map[t['relation_map'].sum(-1).nonzero(as_tuple=False)]
@@ -128,14 +202,14 @@ class STIP(nn.Module):
         for imgid in range(bs):
             # >>>>>>>>>>>> relation proposal <<<<<<<<<<<<<<<
             probs = outputs_class[-1, imgid].softmax(-1)
-            inst_scores, inst_labels = probs[:, :-1].max(-1)
+            inst_scores, inst_labels = probs[:, :].max(-1)
             human_instance_ids = torch.logical_and(inst_scores > 0.5, inst_labels <= 10).nonzero(as_tuple=False)
-            bg_instance_ids = (probs[:, -1] > 1)
+            bg_instance_ids = (probs[:, -1] < 0)
             if self.args.apply_nms_on_detr and not self.training:
                 suppress_ids = self.apply_nms(inst_scores, inst_labels, outputs_coord[-1, imgid])
                 bg_instance_ids[suppress_ids] = True
 
-            rel_mat = torch.zeros((num_nodes, num_nodes))
+            rel_mat = torch.zeros((100, 100))
             rel_mat[human_instance_ids, ~bg_instance_ids] = 1 # subj is human, obj is not background
             if self.args.dataset_file != 'vcoco': rel_mat.fill_diagonal_(0)
             if self.args.adaptive_relation_query_num:
@@ -146,9 +220,9 @@ class STIP(nn.Module):
                     rel_mat[tmp_id] = 1
 
             if self.training:
-                rel_mat[gt_rel_pairs[imgid][:,:1], ~bg_instance_ids] = 1
-                rel_mat[gt_rel_pairs[imgid][:,0], gt_rel_pairs[imgid][:, 1]] = 0
-                rel_pairs = rel_mat.nonzero(as_tuple=False) # neg pairs
+                rel_mat[gt_rel_pairs[imgid][:, :1], ~bg_instance_ids] = 1
+                rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+                rel_pairs = rel_mat.nonzero(as_tuple=False).cuda() # neg pairs
 
                 if self.args.use_hard_mining_for_relation_discovery:
                     # hard negative sampling
@@ -178,7 +252,7 @@ class STIP(nn.Module):
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
                 # _, sort_rel_inds = torch.cat([inst_scores[rel_pairs[:, 1:]], p_relation_exist_logits.sigmoid()], dim=-1).prod(-1).sort(descending=True)
-                sampled_rel_inds = sort_rel_inds[:self.args.num_hoi_queries]
+                sampled_rel_inds = sort_rel_inds[:self.args.num_hoi_queries].to(rel_pairs.device)
 
                 sampled_rel_pairs = rel_pairs[sampled_rel_inds]
                 sampled_rel_reps = rel_reps[sampled_rel_inds]
@@ -516,7 +590,7 @@ class STIPCriterion(nn.Module):
         if self.args.train_detr:
             # Compute the average number of target boxes accross all nodes, for normalization purposes
             num_boxes = sum(len(t["labels"]) for t in targets)
-            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=device)
+            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
             if is_dist_avail_and_initialized():
                 torch.distributed.all_reduce(num_boxes)
             num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
@@ -796,17 +870,17 @@ class STIPPostProcess(nn.Module):
                 results.append(res_dict)
 
         elif dataset == 'or':
-            _valid_obj_ids = self.args.valid_obj_ids + [self.args.valid_obj_ids[-1]+1]
-            out_obj_logits = outputs['pred_logits'][..., _valid_obj_ids]
+            _valid_obj_ids = self.args.valid_obj_ids
+            out_obj_logits = outputs['pred_logits'][..., _valid_obj_ids].to("cpu")
             # tail classification score
             obj_scores, obj_labels = [], []
             sub_scores, sub_labels = [], []
             for o_ids, lgts in zip(o_indices, out_obj_logits):
-                img_obj_scores, img_obj_labels = F.softmax(lgts[o_ids], -1)[..., :-1].max(-1)
+                img_obj_scores, img_obj_labels = F.softmax(lgts[o_ids], -1)[..., :].max(-1)
                 obj_scores.append(img_obj_scores)
                 obj_labels.append(img_obj_labels)
             for h_ids, lgts in zip(h_indices, out_obj_logits):
-                img_sub_scores, img_sub_labels = F.softmax(lgts[h_ids], -1)[..., :-1].max(-1)
+                img_sub_scores, img_sub_labels = F.softmax(lgts[h_ids], -1)[..., :].max(-1)
                 sub_scores.append(img_sub_scores)
                 sub_labels.append(img_sub_labels)
             # actions
@@ -828,7 +902,7 @@ class STIPPostProcess(nn.Module):
                 sb = box[h_idx, :]
                 ob = box[o_idx, :]
                 b = torch.cat((sb, ob))
-
+                vs = vs.to(os.device)
                 vs = vs * os.unsqueeze(1)
                 ids = torch.arange(b.shape[0])
 
@@ -876,7 +950,7 @@ class RelationFeatureExtractor(nn.Module):
         # tail semantic feature
         if args.use_tail_semantic_feature:
             semantic_dim = 300
-            self.label_embedding = nn.Embedding(self.args.num_classes+1, semantic_dim)
+            self.label_embedding = nn.Embedding(self.args.num_classes, semantic_dim)
             fusion_dim += semantic_dim
 
         # union feature
