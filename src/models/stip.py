@@ -165,8 +165,6 @@ class STIP(nn.Module):
                 out['enc_outputs'] = [
                     {'pred_logits': a, 'pred_boxes': b} for a, b in zip(enc_outputs_class, enc_outputs_coord)
                 ]
-
-        out['dn_meta'] = dn_meta
         # -----------------------------------------------
 
         det2gt_indices = None
@@ -318,9 +316,17 @@ class STIP(nn.Module):
             "pred_action_exists": pred_rel_exists,
             "det2gt_indices": det2gt_indices,
             "hoi_recognition_time": hoi_recognition_time,
+            "dn_meta": dn_meta,
         }
         if self.args.hoi_aux_loss: out['hoi_aux_outputs'] = self._set_hoi_aux_loss(pred_actions)
-        if self.args.train_detr and self.args.aux_loss: out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+        if self.args.train_detr and self.args.aux_loss:
+            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+            out['interm_outputs'] = {'pred_logits': interm_class, 'pred_boxes': interm_coord}
+            out['interm_outputs_for_matching_pre'] = {'pred_logits': interm_class, 'pred_boxes': init_box_proposal}
+            # out['enc_outputs'] = [
+            #     {'pred_logits': a, 'pred_boxes': b} for a, b in zip(enc_outputs_class, enc_outputs_coord)
+            # ]
+
 
         return out
 
@@ -402,6 +408,7 @@ class STIPCriterion(nn.Module):
             'loss_proposal': args.proposal_loss_coef,
             'loss_act': args.action_loss_coef
         }
+        self.focal_alpha = 0.25
         if args.hoi_aux_loss:
             for i in range(args.hoi_dec_layers - 1):
                 self.weight_dict.update({f'loss_act_{i}': self.weight_dict['loss_act']})
@@ -438,9 +445,9 @@ class STIPCriterion(nn.Module):
             interm_weight_dict = {}
             no_interm_box_loss = False
             _coeff_weight_dict = {
-                'loss_ce': 1.0 * args.finetune_detr_weight,
-                'loss_bbox': 1.0 * args.finetune_detr_weight if not no_interm_box_loss else 0.0,
-                'loss_giou': 1.0 * args.finetune_detr_weight if not no_interm_box_loss else 0.0,
+                'loss_ce': 1.0,
+                'loss_bbox': 1.0 if not no_interm_box_loss else 0.0,
+                'loss_giou': 1.0 if not no_interm_box_loss else 0.0,
             }
 
             interm_loss_coef = 1.0
@@ -596,8 +603,6 @@ class STIPCriterion(nn.Module):
             num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
 
             # Compute all the requested losses
-            losses = {}
-
             # prepare for dn loss
             dn_meta = outputs['dn_meta']
 
@@ -629,7 +634,7 @@ class STIPCriterion(nn.Module):
                         self.get_loss(loss, output_known_lbs_bboxes, targets, dn_pos_idx, num_boxes * scalar, **kwargs))
 
                 l_dict = {k + f'_dn': v for k, v in l_dict.items()}
-                losses.update(l_dict)
+                loss_dict.update(l_dict)
             else:
                 l_dict = dict()
                 l_dict['loss_bbox_dn'] = torch.as_tensor(0.).to('cuda')
@@ -638,10 +643,10 @@ class STIPCriterion(nn.Module):
                 l_dict['loss_xy_dn'] = torch.as_tensor(0.).to('cuda')
                 l_dict['loss_hw_dn'] = torch.as_tensor(0.).to('cuda')
                 l_dict['cardinality_error_dn'] = torch.as_tensor(0.).to('cuda')
-                losses.update(l_dict)
+                loss_dict.update(l_dict)
 
             for loss in self.detr_losses:
-                losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+                loss_dict.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
 
             # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
             if 'aux_outputs' in outputs:
@@ -654,7 +659,7 @@ class STIPCriterion(nn.Module):
                             kwargs = {'log': False}
                         l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
                         l_dict = {k + f'_{idx}': v for k, v in l_dict.items()}
-                        losses.update(l_dict)
+                        loss_dict.update(l_dict)
 
                     if self.training and dn_meta and 'output_known_lbs_bboxes' in dn_meta:
                         aux_outputs_known = output_known_lbs_bboxes['aux_outputs'][idx]
@@ -669,7 +674,7 @@ class STIPCriterion(nn.Module):
                                               **kwargs))
 
                         l_dict = {k + f'_dn_{idx}': v for k, v in l_dict.items()}
-                        losses.update(l_dict)
+                        loss_dict.update(l_dict)
                     else:
                         l_dict = dict()
                         l_dict['loss_bbox_dn'] = torch.as_tensor(0.).to('cuda')
@@ -679,7 +684,7 @@ class STIPCriterion(nn.Module):
                         l_dict['loss_hw_dn'] = torch.as_tensor(0.).to('cuda')
                         l_dict['cardinality_error_dn'] = torch.as_tensor(0.).to('cuda')
                         l_dict = {k + f'_{idx}': v for k, v in l_dict.items()}
-                        losses.update(l_dict)
+                        loss_dict.update(l_dict)
 
             # interm_outputs loss
             if 'interm_outputs' in outputs:
@@ -692,7 +697,7 @@ class STIPCriterion(nn.Module):
                         kwargs = {'log': False}
                     l_dict = self.get_loss(loss, interm_outputs, targets, indices, num_boxes, **kwargs)
                     l_dict = {k + f'_interm': v for k, v in l_dict.items()}
-                    losses.update(l_dict)
+                    loss_dict.update(l_dict)
 
             # enc output loss
             if 'enc_outputs' in outputs:
@@ -705,9 +710,9 @@ class STIPCriterion(nn.Module):
                             kwargs = {'log': False}
                         l_dict = self.get_loss(loss, enc_outputs, targets, indices, num_boxes, **kwargs)
                         l_dict = {k + f'_enc_{i}': v for k, v in l_dict.items()}
-                        losses.update(l_dict)
+                        loss_dict.update(l_dict)
 
-            return losses
+            return loss_dict
 
     def prep_for_dn(self,dn_meta):
         output_known_lbs_bboxes = dn_meta['output_known_lbs_bboxes']
@@ -748,7 +753,7 @@ class STIPCriterion(nn.Module):
         probs = inputs.sigmoid()
 
 
-        weights =  torch.tensor([1.7361e-03, 1.6393e-02,3.3003e-03, 1.9543e-05, 8.4034e-03, 1.6129e-02,6.6225e-03,3.8226e-04,2.8694e-04,3.2680e-03,7.6104e-04,8.0000e-03,1.2195e-02, 9.5785e-04])
+        weights =  torch.tensor([1.7361e-03, 1.6393e-02,3.3003e-03, 1.9543e-05, 8.4034e-03, 1.6129e-02,6.6225e-03,3.8226e-04,2.8694e-04,3.2680e-03,7.6104e-04,8.0000e-03,1.2195e-02, 9.5785e-04]).to(probs.device)
         # focal loss to balance positive/negative
         pos_inds = targets.eq(1).float()
         neg_inds = targets.lt(1).float()
