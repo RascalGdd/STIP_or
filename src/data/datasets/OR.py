@@ -52,7 +52,6 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         if self._transforms is not None:
             img, target = self._transforms(img, target)
 
-        img = torchvision.transforms.Resize([256, 256])(img)
         target["hoi_labels"] = one_hot(torch.cat([target["rel_annotations"][:, 2]]), num_classes=15).type(torch.float32)
         target["obj_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 1]]])
         target["sub_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 0]]])
