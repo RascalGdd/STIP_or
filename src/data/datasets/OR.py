@@ -15,8 +15,76 @@ from pycocotools import mask as coco_mask
 import random
 import src.data.transforms.transforms as T
 from torch.nn.functional import one_hot
+import os.path
+from typing import Any, Callable, List, Optional, Tuple
 
-class CocoDetection(torchvision.datasets.CocoDetection):
+from PIL import Image
+
+from torchvision.datasets.vision import VisionDataset
+#     def _load_image(self, id: int) -> Image.Image:
+#         path = self.coco.loadImgs(id)[0]["file_name"]
+#         return Image.open(os.path.join(self.root, path)).convert("RGB")
+
+class MultiView_CocoDetection(VisionDataset):
+    """`MS Coco Detection <https://cocodataset.org/#detection-2016>`_ Dataset.
+
+    It requires the `COCO API to be installed <https://github.com/pdollar/coco/tree/master/PythonAPI>`_.
+
+    Args:
+        root (string): Root directory where images are downloaded to.
+        annFile (string): Path to json annotation file.
+        transform (callable, optional): A function/transform that  takes in an PIL image
+            and returns a transformed version. E.g, ``transforms.PILToTensor``
+        target_transform (callable, optional): A function/transform that takes in the
+            target and transforms it.
+        transforms (callable, optional): A function/transform that takes input sample and its target as entry
+            and returns a transformed version.
+    """
+
+    def __init__(
+        self,
+        root: str,
+        annFile: str,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        transforms: Optional[Callable] = None,
+    ) -> None:
+        super().__init__(root, transforms, transform, target_transform)
+        from pycocotools.coco import COCO
+
+        self.coco = COCO(annFile)
+        self.ids = list(sorted(self.coco.imgs.keys()))
+        self.views = [2, 3, 6]
+
+    def _load_image(self, id: int) -> Image.Image:
+        path = self.coco.loadImgs(id)[0]["file_name"]
+        return Image.open(os.path.join(self.root, path)).convert("RGB")
+
+    def _load_image_multiview(self, id: int):
+        path_mainview = self.coco.loadImgs(id)[0]["file_name"]
+        return [Image.open(os.path.join(self.root, path_mainview.split('.')[0] + '_view' + str(view) + '.' + path_mainview.split('.')[1])).convert("RGB") for view in self.views]
+
+
+    def _load_target(self, id: int) -> List[Any]:
+        return self.coco.loadAnns(self.coco.getAnnIds(id))
+
+    def __getitem__(self, index: int):
+        id = self.ids[index]
+        image = self._load_image(id)
+        target = self._load_target(id)
+
+        images_multiview = self._load_image_multiview(id)
+
+        if self.transforms is not None:
+            image, target = self.transforms(image, target)
+            images_multiview = [self.transforms(i) for i in images_multiview]
+
+        return image, target, images_multiview
+
+    def __len__(self) -> int:
+        return len(self.ids)
+
+class CocoDetection(MultiView_CocoDetection):
     def __init__(self, img_folder, ann_file, transforms, return_masks):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
@@ -35,14 +103,12 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         self.rel_categories = all_rels['rel_categories']
 
     def __getitem__(self, idx):
-        img, target = super(CocoDetection, self).__getitem__(idx)
+        img, target, images_multiview = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]
         while not self.rel_annotations[str(image_id)]:
             idx = random.randint(0, len(self.ids)-1)
-            #print("id length", len(self.ids))
-            #print("idx", idx)
             image_id = self.ids[idx]
-            img, target = super(CocoDetection, self).__getitem__(idx)
+            img, target, images_multiview = super(CocoDetection, self).__getitem__(idx)
 
         rel_target = self.rel_annotations[str(image_id)]
 
@@ -50,7 +116,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
 
         img, target = self.prepare(img, target)
         if self._transforms is not None:
-            img, target = self._transforms(img, target)
+            img, target, images_multiview = self._transforms(img, target, images_multiview)
         target["hoi_labels"] = one_hot(torch.cat([target["rel_annotations"][:, 2]]), num_classes=15).type(torch.float32)
         target["obj_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 1]]])
         target["sub_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 0]]])
@@ -77,7 +143,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
 
 
 
-        return img, target
+        return img, target, images_multiview
 
 
 def convert_coco_poly_to_mask(segmentations, height, width):

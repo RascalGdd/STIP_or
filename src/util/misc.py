@@ -181,6 +181,10 @@ def get_sha():
 def collate_fn(batch):
     batch = list(zip(*batch))
     batch[0] = nested_tensor_from_tensor_list(batch[0])
+    multi_view_list = []
+    for k in batch[2]:
+        multi_view_list += k
+    batch[2] = nested_tensor_from_tensor_list(multi_view_list)
     return tuple(batch)
 
 
