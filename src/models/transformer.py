@@ -39,6 +39,14 @@ class Transformer(nn.Module):
         self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
                                           return_intermediate=return_intermediate_dec)
 
+        #  this part for multi view fusion
+        multiviewFusion_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
+                                                dropout, activation, normalize_before, crossattn=True)
+        multiviewFusion_norm = nn.LayerNorm(d_model)
+        #  2 is the number of fusion layers
+        self.multiviewFusion = TransformerDecoder(multiviewFusion_layer, 2, multiviewFusion_norm,
+                                          return_intermediate=False)
+
         self._reset_parameters()
         self.d_model = d_model
         self.nhead = nhead
@@ -48,16 +56,32 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, src, mask, query_embed, pos_embed, return_decoder_input=False):
+    def forward(self, src, mask, query_embed, pos_embed, src_multiview, mask_multiview, pos_embed_multiview,):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
+        bs_multiview, c_multiview, h_multiview, w_multiview = src_multiview.shape
         src = src.flatten(2).permute(2, 0, 1)
+        src_multiview = src_multiview.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
+        pos_embed_multiview = pos_embed_multiview.flatten(2).permute(2, 0, 1)
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
         mask = mask.flatten(1)
+        mask_multiview = mask_multiview.flatten(1)
 
         tgt = torch.zeros_like(query_embed)
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        memory_multiview = self.encoder(src_multiview, src_key_padding_mask=mask_multiview, pos=pos_embed_multiview)
+        memory_multiview_split = memory_multiview.split(3, dim=1)
+        memory_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in memory_multiview_split], dim=0).permute(1, 0, 2)
+        mask_multiview_split = mask_multiview.split(3, dim=0)
+        mask_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in mask_multiview_split], dim=0)
+        pos_embed_multiview_split = pos_embed_multiview.split(3, dim=1)
+        pos_embed_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in pos_embed_multiview_split], dim=0).permute(1, 0, 2)
+
+        # memory = self.multiviewFusion(memory, memory_multiview, memory_key_padding_mask=mask_multiview, pos=pos_embed_multiview, query_pos=pos_embed)
+
+        memory = self.multiviewFusion(memory, memory_multiview, memory_key_padding_mask=mask_multiview,
+                                      pos=pos_embed_multiview, query_pos=pos_embed)[0]
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
 
         return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), 
@@ -195,7 +219,7 @@ class TransformerEncoderLayer(nn.Module):
 class TransformerDecoderLayer(nn.Module):
 
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
-                 activation="relu", normalize_before=False):
+                 activation="relu", normalize_before=False, crossattn = False):
         super().__init__()
         # self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         # self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
@@ -215,6 +239,7 @@ class TransformerDecoderLayer(nn.Module):
 
         self.activation = _get_activation_fn(activation)
         self.normalize_before = normalize_before
+        self.crossattn = crossattn
 
     def with_pos_embed(self, tensor, pos: Optional[Tensor]):
         return tensor if pos is None else tensor + pos
@@ -234,6 +259,33 @@ class TransformerDecoderLayer(nn.Module):
                               memory_role_embedding=query_structure_encoding)[0]
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
+        tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt, query_pos),
+                                   key=self.with_pos_embed(memory, pos),
+                                   value=memory, attn_mask=memory_mask,
+                                   key_padding_mask=memory_key_padding_mask,
+                                   memory_role_embedding=memory_role_embedding)[0]
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt
+
+    def forward_crossattn(self, tgt, memory,
+                     tgt_mask: Optional[Tensor] = None,
+                     memory_mask: Optional[Tensor] = None,
+                     tgt_key_padding_mask: Optional[Tensor] = None,
+                     memory_key_padding_mask: Optional[Tensor] = None,
+                     pos: Optional[Tensor] = None,
+                     query_pos: Optional[Tensor] = None,
+                     memory_role_embedding: Optional[Tensor] = None,
+                     query_structure_encoding: Optional[Tensor] = None):
+        # q = k = self.with_pos_embed(tgt, query_pos) ## !! key & value are different: key=pos+value
+        # tgt2 = self.self_attn(q, k, value=tgt, attn_mask=tgt_mask,
+        #                       key_padding_mask=tgt_key_padding_mask,
+        #                       memory_role_embedding=query_structure_encoding)[0]
+        # tgt = tgt + self.dropout1(tgt2)
+        # tgt = self.norm1(tgt)
         tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt, query_pos),
                                    key=self.with_pos_embed(memory, pos),
                                    value=memory, attn_mask=memory_mask,
@@ -282,6 +334,9 @@ class TransformerDecoderLayer(nn.Module):
                 query_pos: Optional[Tensor] = None,
                 memory_role_embedding: Optional[Tensor] = None,
                 query_structure_encoding: Optional[Tensor] = None):
+        if self.crossattn:
+            return self.forward_crossattn(tgt, memory, tgt_mask, memory_mask,
+                                 tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos, memory_role_embedding, query_structure_encoding)
         if self.normalize_before:
             return self.forward_pre(tgt, memory, tgt_mask, memory_mask,
                                     tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos, memory_role_embedding, query_structure_encoding)

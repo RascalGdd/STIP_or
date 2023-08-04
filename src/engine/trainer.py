@@ -29,10 +29,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     print(f"\n>>> Epoch #{(epoch+1)}")
     for samples, targets, multiview_samples in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device)
-        multiview_samples = [k.to(device) for k in multiview_samples]
+        multiview_samples = multiview_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        outputs = model(samples, targets)
+        outputs = model(samples, targets, multiview_samples)
         loss_dict = criterion(outputs, targets, log)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)

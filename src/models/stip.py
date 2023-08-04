@@ -72,20 +72,22 @@ class STIP(nn.Module):
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
 
-    def forward(self, samples: NestedTensor, targets=None):
+    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None):
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
 
         start_time = time.time()
         # >>>>>>>>>>>>  BACKBONE LAYERS  <<<<<<<<<<<<<<<
         features, pos = self.detr.backbone(samples)
+        features_multiview, pos_multiview = self.detr.backbone(multiview_samples)
         bs = features[-1].tensors.shape[0]
         src, mask = features[-1].decompose()
+        src_multiview, mask_multiview = features_multiview[-1].decompose()
         assert mask is not None
         # ----------------------------------------------
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
-        hs, detr_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1])
+        hs, detr_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1])
         inst_repr = hs[-1]
         num_nodes = inst_repr.shape[1]
 
