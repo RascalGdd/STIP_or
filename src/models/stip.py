@@ -118,6 +118,7 @@ class STIP(nn.Module):
         memory_pos = pos[0]
         if self.args.relation_feature_map_from == 'backbone':
             relation_feature_map = features[0]
+            relation_feature_map_multiview = features_multiview[0]
         elif self.args.relation_feature_map_from == 'detr_encoder':
             relation_feature_map = NestedTensor(detr_encoder_outs, memory_input_mask)
             memory_input = detr_encoder_outs
@@ -154,7 +155,7 @@ class STIP(nn.Module):
                     # hard negative sampling
                     all_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs], dim=0)
                     gt_pair_count = len(gt_rel_pairs[imgid])
-                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid)
+                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
                     p_relation_exist_logits = self.relation_proposal_mlp(all_rel_reps)
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
@@ -756,13 +757,22 @@ class RelationFeatureExtractor(nn.Module):
             self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
             fusion_dim += union_out_dim
 
+        if args.use_view6:
+            out_ch, union_out_dim = 256, 256
+            self.input_proj_view6 = nn.Sequential(
+                nn.Conv2d(in_channels, out_ch, kernel_size=1),
+                nn.ReLU(inplace=True),
+            ) # reduce channel size before pooling
+            self.visual_proj_view6 = make_fc(out_ch * (resolution**2), union_out_dim)
+            fusion_dim += union_out_dim
+
         # fusion
         self.fusion_fc = nn.Sequential(
             make_fc(fusion_dim, out_dim), nn.ReLU(),
             make_fc(out_dim, out_dim), nn.ReLU()
         )
 
-    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None):
+    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None):
         """pool feature for boxes on one image
             features: dxhxw
             boxes: Nx4 (cx_cy_wh, nomalized to 0-1)
@@ -775,6 +785,9 @@ class RelationFeatureExtractor(nn.Module):
             torch.min(head_boxes[:,:2], tail_boxes[:,:2]),
             torch.max(head_boxes[:,2:], tail_boxes[:,2:])
         ], dim=1)
+        view6_boxes = union_boxes.clone()
+        view6_boxes[:, :2] = 0
+        view6_boxes[:, 2:] = 1
 
         # head & tail features
         head_feats = inst_reprs[rel_pairs[:,0]]
@@ -809,6 +822,20 @@ class RelationFeatureExtractor(nn.Module):
             union_visual_feats = roi_align(proj_feature, scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
             union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1))
             relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+
+        if self.args.use_view6:
+            # H, W = features.tensors.shape[-2:] # stacked image size
+            h, w = (~features_multiview.mask[2::3][idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
+            proj_feature_view6 = self.input_proj_view6(features_multiview.tensors[2::3][idx:idx+1])
+            scaled_view6_boxes = torch.cat(
+                [
+                    torch.zeros((len(view6_boxes),1)).to(device=union_boxes.device),
+                    view6_boxes * torch.tensor([w,h,w,h]).to(device=union_boxes.device, dtype=union_boxes.dtype).unsqueeze(0),
+                ], dim=-1
+            )
+            view6_visual_feats = roi_align(proj_feature_view6, scaled_view6_boxes, output_size=self.resolution, sampling_ratio=2)
+            view6_visual_feats = self.visual_proj_view6(view6_visual_feats.flatten(start_dim=1))
+            relation_feats = torch.cat([relation_feats, view6_visual_feats], dim=-1)
 
         x = self.fusion_fc(relation_feats)
         return x
