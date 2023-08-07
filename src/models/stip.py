@@ -744,7 +744,7 @@ class RelationFeatureExtractor(nn.Module):
         if args.use_tail_semantic_feature:
             semantic_dim = 300
             self.label_embedding = nn.Embedding(self.args.num_classes+1, semantic_dim)
-            fusion_dim += semantic_dim
+            fusion_dim += semantic_dim * 2
 
         # union feature
         if args.use_union_feature:
@@ -791,8 +791,9 @@ class RelationFeatureExtractor(nn.Module):
 
         # semantic feature
         if self.args.use_tail_semantic_feature:
-            semantic_feats = (obj_label_logits.softmax(-1) @ self.label_embedding.weight)[rel_pairs[:,1]]
-            relation_feats = torch.cat([relation_feats, semantic_feats], dim=-1)
+            semantic_feats_tail = (obj_label_logits.softmax(-1) @ self.label_embedding.weight)[rel_pairs[:, 1]]
+            semantic_feats_head = (obj_label_logits.softmax(-1) @ self.label_embedding.weight)[rel_pairs[:, 0]]
+            relation_feats = torch.cat([relation_feats, semantic_feats_head, semantic_feats_tail], dim=-1)
 
         # union feature
         if self.args.use_union_feature:
