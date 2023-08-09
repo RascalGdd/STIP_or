@@ -270,7 +270,8 @@ if __name__ == '__main__':
     parser.add_argument('--no_tail_semantic_feature', dest='use_tail_semantic_feature', action='store_false', default=True)
     parser.add_argument('--no_spatial_feature', dest='use_spatial_feature', action='store_false', default=True)
     parser.add_argument('--no_interaction_decoder', action='store_true', default=False)
-    parser.add_argument('--use_view6', action='store_true', default=True)
+    parser.add_argument('--use_multiviewfusion', action='store_true', default=False)
+    parser.add_argument('--use_view6', action='store_true', default=False)
 
     # not sensitive or effective
     parser.add_argument('--use_memory_union_mask', action='store_true', default=False)

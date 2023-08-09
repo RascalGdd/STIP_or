@@ -87,7 +87,7 @@ class STIP(nn.Module):
         # ----------------------------------------------
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
-        hs, detr_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1])
+        hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion)
         inst_repr = hs[-1]
         num_nodes = inst_repr.shape[1]
 
@@ -115,12 +115,14 @@ class STIP(nn.Module):
         # >>>>>>>>>>>> HOI DETECTION LAYERS <<<<<<<<<<<<<<<
         pred_rel_exists, pred_rel_pairs, pred_actions = [], [], []
         memory_input, memory_input_mask = features[0].decompose()
+        memory_input_multiview, memory_input_mask_multiview = features_multiview[0].decompose()
         memory_pos = pos[0]
         if self.args.relation_feature_map_from == 'backbone':
             relation_feature_map = features[0]
             relation_feature_map_multiview = features_multiview[0]
         elif self.args.relation_feature_map_from == 'detr_encoder':
             relation_feature_map = NestedTensor(detr_encoder_outs, memory_input_mask)
+            relation_feature_map_multiview = NestedTensor(multiview_encoder_outs, memory_input_mask_multiview)
             memory_input = detr_encoder_outs
 
         if not self.args.no_interaction_decoder:
@@ -174,7 +176,7 @@ class STIP(nn.Module):
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
                 rel_pairs = rel_mat.nonzero(as_tuple=False)
-                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid)
+                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
                 p_relation_exist_logits = self.relation_proposal_mlp(rel_reps)
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
@@ -785,14 +787,15 @@ class RelationFeatureExtractor(nn.Module):
             torch.min(head_boxes[:,:2], tail_boxes[:,:2]),
             torch.max(head_boxes[:,2:], tail_boxes[:,2:])
         ], dim=1)
-        view6_boxes = union_boxes.clone()
+        view6_boxes = torch.zeros_like(union_boxes)
         view6_boxes[:, :2] = 0
         view6_boxes[:, 2:] = 1
 
         # head & tail features
-        head_feats = inst_reprs[rel_pairs[:,0]]
-        tail_feats = inst_reprs[rel_pairs[:,1]]
-        tail_feats[rel_pairs[:,0]==rel_pairs[:,1]] = 0 # set to 0 when head==tail for VCOCO (i.e., tail overlapped)
+        head_feats = inst_reprs[rel_pairs[:, 0]]
+        tail_feats = inst_reprs[rel_pairs[:, 1]]
+        tail_feats[rel_pairs[:, 0]==rel_pairs[:, 1]] = 0 # set to 0 when head==tail for VCOCO (i.e., tail overlapped)
+        head_feats[rel_pairs[:, 0] == rel_pairs[:, 1]] = 0  # set to 0 when head==tail for VCOCO (i.e., tail overlapped)
 
         relation_feats = torch.cat([head_feats, tail_feats], dim=-1)
 
