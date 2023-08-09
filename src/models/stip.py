@@ -72,7 +72,7 @@ class STIP(nn.Module):
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
 
-    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None):
+    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None):
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
 

@@ -17,8 +17,9 @@ import src.data.transforms.transforms as T
 from torch.nn.functional import one_hot
 import os.path
 from typing import Any, Callable, List, Optional, Tuple
-
+import open3d as o3d
 from PIL import Image
+import numpy as np
 
 from torchvision.datasets.vision import VisionDataset
 #     def _load_image(self, id: int) -> Image.Image:
@@ -60,6 +61,13 @@ class MultiView_CocoDetection(VisionDataset):
         path = self.coco.loadImgs(id)[0]["file_name"]
         return Image.open(os.path.join(self.root, path)).convert("RGB")
 
+    def _load_points(self, id: int):
+        path = self.coco.loadImgs(id)[0]["file_name"]
+        points_path = os.path.join(self.root.replace("images", "points"), path.replace("jpg", "pcd"))
+        point_cloud = o3d.io.read_point_cloud(points_path)
+        point_cloud = torch.from_numpy(np.asarray(point_cloud.points))
+        return point_cloud
+
     def _load_image_multiview(self, id: int):
         path_mainview = self.coco.loadImgs(id)[0]["file_name"]
         return [Image.open(os.path.join(self.root, path_mainview.split('.')[0] + '_view' + str(view) + '.' + path_mainview.split('.')[1])).convert("RGB") for view in self.views]
@@ -72,14 +80,14 @@ class MultiView_CocoDetection(VisionDataset):
         id = self.ids[index]
         image = self._load_image(id)
         target = self._load_target(id)
-
         images_multiview = self._load_image_multiview(id)
+        points = self._load_points(id)
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
             images_multiview = [self.transforms(i) for i in images_multiview]
 
-        return image, target, images_multiview
+        return image, target, images_multiview, points
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -103,12 +111,12 @@ class CocoDetection(MultiView_CocoDetection):
         self.rel_categories = all_rels['rel_categories']
 
     def __getitem__(self, idx):
-        img, target, images_multiview = super(CocoDetection, self).__getitem__(idx)
+        img, target, images_multiview, points = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]
         while not self.rel_annotations[str(image_id)]:
             idx = random.randint(0, len(self.ids)-1)
             image_id = self.ids[idx]
-            img, target, images_multiview = super(CocoDetection, self).__getitem__(idx)
+            img, target, images_multiview, points = super(CocoDetection, self).__getitem__(idx)
 
         rel_target = self.rel_annotations[str(image_id)]
 
@@ -143,7 +151,7 @@ class CocoDetection(MultiView_CocoDetection):
 
 
 
-        return img, target, images_multiview
+        return img, target, images_multiview, points
 
 
 def convert_coco_poly_to_mask(segmentations, height, width):
