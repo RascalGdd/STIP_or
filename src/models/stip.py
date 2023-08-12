@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from src.util.misc import accuracy, is_dist_avail_and_initialized, get_world_size
 from src.models.stip_utils import check_annotation
 import time
+from .backbone_module import Pointnet2Backbone
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -18,6 +19,7 @@ class STIP(nn.Module):
         self.detr_matcher = detr_matcher
         # * Instance Transformer ---------------
         self.detr = detr
+        self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
         if not args.train_detr:
             # if this flag is given, freeze the object detection related parameters of DETR
             for p in self.parameters():
@@ -84,10 +86,13 @@ class STIP(nn.Module):
         src, mask = features[-1].decompose()
         src_multiview, mask_multiview = features_multiview[-1].decompose()
         assert mask is not None
-        # ----------------------------------------------
+        # >>>>>>>>>>>>   POINT CLOUD  <<<<<<<<<<<<<<<
+        end_points = {}
+        end_points = self.backbone_net(points, end_points)
+        point_features = torch.cat([end_points['fp2_features'].permute(0, 2, 1), end_points['fp2_xyz']], dim=-1)
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
-        hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion)
+        hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         inst_repr = hs[-1]
         num_nodes = inst_repr.shape[1]
 

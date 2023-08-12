@@ -31,7 +31,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        points = torch.cat([points[0].unsqueeze(0), points[1].unsqueeze(0)], dim=0).to(device)
+        points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 
         outputs = model(samples, targets, multiview_samples, points)
         loss_dict = criterion(outputs, targets, log)

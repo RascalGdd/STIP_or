@@ -20,11 +20,21 @@ from typing import Any, Callable, List, Optional, Tuple
 import open3d as o3d
 from PIL import Image
 import numpy as np
-
 from torchvision.datasets.vision import VisionDataset
 #     def _load_image(self, id: int) -> Image.Image:
 #         path = self.coco.loadImgs(id)[0]["file_name"]
 #         return Image.open(os.path.join(self.root, path)).convert("RGB")
+
+def random_sampling(pc, num_sample, replace=None, return_choices=False):
+    """ Input is NxC, output is num_samplexC
+    """
+    if replace is None: replace = (pc.shape[0] < num_sample)
+    choices = np.random.choice(pc.shape[0], num_sample, replace=replace)
+    if return_choices:
+        return pc[choices], choices
+    else:
+        return pc[choices]
+
 
 class MultiView_CocoDetection(VisionDataset):
     """`MS Coco Detection <https://cocodataset.org/#detection-2016>`_ Dataset.
@@ -64,8 +74,13 @@ class MultiView_CocoDetection(VisionDataset):
     def _load_points(self, id: int):
         path = self.coco.loadImgs(id)[0]["file_name"]
         points_path = os.path.join(self.root.replace("images", "points"), path.replace("jpg", "pcd"))
-        point_cloud = o3d.io.read_point_cloud(points_path)
-        point_cloud = torch.from_numpy(np.asarray(point_cloud.points))
+        pcd = o3d.io.read_point_cloud(points_path)
+        point_cloud = np.concatenate([np.asarray(pcd.points), np.asarray(pcd.colors)], axis=1)
+        # scaling
+        point_cloud[:, :3] /= 1000
+        point_cloud[:, 3:] = (point_cloud[:, 3:] - np.array([0.49, 0.54, 0.58]))
+        point_cloud, choices = random_sampling(point_cloud, 200000, return_choices=True)
+        point_cloud = torch.tensor(point_cloud).type(torch.FloatTensor)
         return point_cloud
 
     def _load_image_multiview(self, id: int):

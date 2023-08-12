@@ -19,6 +19,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from .stip_utils import MultiheadAttention
+from .attention import MMG_teacher
+from .feed_forward import MLP
 
 class Transformer(nn.Module):
 
@@ -47,16 +49,22 @@ class Transformer(nn.Module):
         self.multiviewFusion = TransformerDecoder(multiviewFusion_layer, 2, multiviewFusion_norm,
                                           return_intermediate=False)
 
+        #  this part for points fusion
+        self.points_mlp = MLP(291, 256, 256, 1)
+        self.pointsFusion = MMG_teacher(dim_node=d_model, num_heads=nhead)
+
         self._reset_parameters()
         self.d_model = d_model
         self.nhead = nhead
+
+
 
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, src, mask, query_embed, pos_embed, src_multiview, mask_multiview, pos_embed_multiview, multiview_fusion=False):
+    def forward(self, src, mask, query_embed, pos_embed, src_multiview, mask_multiview, pos_embed_multiview, multiview_fusion=False, points_fusion=False, point_features=None):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
         bs_multiview, c_multiview, h_multiview, w_multiview = src_multiview.shape
@@ -81,8 +89,11 @@ class Transformer(nn.Module):
         if multiview_fusion:
             memory = self.multiviewFusion(memory, memory_multiview, memory_key_padding_mask=mask_multiview,
                                           pos=pos_embed_multiview, query_pos=pos_embed)[0]
-        hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
+        if points_fusion:
+            point_features = self.points_mlp(point_features)
+            memory = self.pointsFusion(point_features, memory.permute(1, 0, 2)).permute(1, 0, 2)
 
+        hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
         return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w)
 
 
