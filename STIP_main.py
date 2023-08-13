@@ -275,7 +275,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_view6', action='store_true', default=False)
     parser.add_argument('--use_head_semantic_feature', action='store_true', default=False)
     # point cloud arguments
-    parser.add_argument('--use_pointsfusion', action='store_true', default=True)
+    parser.add_argument('--use_pointsfusion', action='store_true', default=False)
 
     # not sensitive or effective
     parser.add_argument('--use_memory_union_mask', action='store_true', default=False)
