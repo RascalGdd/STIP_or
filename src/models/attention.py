@@ -140,24 +140,11 @@ class MMG_teacher(torch.nn.Module):
         self.self_attn_3d = MultiHeadAttention(d_model=dim_node, d_k=dim_node // num_heads, d_v=dim_node // num_heads,
                                                h=num_heads)
 
-        self.cross_attn_3d = MultiHeadAttention(d_model=dim_node, d_k=dim_node // num_heads, d_v=dim_node // num_heads,
-                                                h=num_heads)
-
         self.self_attn_2d = MultiHeadAttention(d_model=dim_node, d_k=dim_node // num_heads, d_v=dim_node // num_heads,
                                                h=num_heads)
 
         self.cross_attn_2d = MultiHeadAttention(d_model=dim_node, d_k=dim_node // num_heads, d_v=dim_node // num_heads,
                                                 h=num_heads)
-
-        self.fusion_module = nn.Sequential(
-            nn.Linear(256 * 3, 256 * 2),
-            nn.ReLU(),
-            nn.BatchNorm1d(256 * 2),
-            nn.Dropout(0.5),
-            nn.Linear(256 * 2, 256),
-            nn.ReLU(),
-            nn.BatchNorm1d(256)
-        )
 
     def forward(self, obj_feature_3d, obj_feature_2d):
 
@@ -170,32 +157,10 @@ class MMG_teacher(torch.nn.Module):
 
         obj_feature_3d_sa = self.self_attn_3d(obj_feature_3d, obj_feature_3d, obj_feature_3d,
                                               attention_weights=distance, way=attention_matrix_way, attention_mask=mask)
-        # obj_feature_3d_sa = obj_feature_3d
-        # obj_feature_2d_sa = self.self_attn_2d(obj_feature_2d, obj_feature_2d, obj_feature_2d,
-        #                                       attention_weights=distance, way=attention_matrix_way, attention_mask=mask)
-        # obj_feature_3d_ca = self.cross_attn_3d(obj_feature_3d_sa, obj_feature_2d_sa, obj_feature_2d_sa,
-        #                                        attention_weights=distance, way=attention_matrix_way,
-        #                                        attention_mask=mask)
-        # obj_feature_2d_ca = self.cross_attn_2d(obj_feature_2d_sa, obj_feature_3d_sa, obj_feature_3d_sa,
-        #                                        attention_weights=distance, way=attention_matrix_way,
-        #                                        attention_mask=mask)
-        obj_feature_3d_ca = self.cross_attn_3d(obj_feature_3d_sa, obj_feature_2d, obj_feature_2d,
+        obj_feature_2d_sa = self.self_attn_2d(obj_feature_2d, obj_feature_2d, obj_feature_2d,
+                                              attention_weights=distance, way=attention_matrix_way, attention_mask=mask)
+        obj_feature_2d_ca = self.cross_attn_2d(obj_feature_2d_sa, obj_feature_3d_sa, obj_feature_3d_sa,
                                                attention_weights=distance, way=attention_matrix_way,
                                                attention_mask=mask)
-        obj_feature_2d_ca = self.cross_attn_2d(obj_feature_2d, obj_feature_3d_sa, obj_feature_3d_sa,
-                                               attention_weights=distance, way=attention_matrix_way,
-                                               attention_mask=mask)
-
-        obj_feature_3d_sa = obj_feature_3d_sa
-        # obj_feature_2d_sa = obj_feature_2d_sa.squeeze(0)
-        obj_feature_3d_ca = obj_feature_3d_ca
-        obj_feature_2d_ca = obj_feature_2d_ca
-
-        # fusion 3d and 2d
-        # obj_feature = self.fusion_module(
-        #     torch.cat([obj_feature_3d_sa, obj_feature_2d_sa, obj_feature_3d_ca, obj_feature_2d_ca], dim=-1))
-
-        # obj_feature = self.fusion_module(
-        #     torch.cat([obj_feature_3d_sa, obj_feature_3d_ca, obj_feature_2d_ca], dim=1))
 
         return obj_feature_2d_ca
