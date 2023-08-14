@@ -146,6 +146,14 @@ class MMG_teacher(torch.nn.Module):
         self.cross_attn_2d = MultiHeadAttention(d_model=dim_node, d_k=dim_node // num_heads, d_v=dim_node // num_heads,
                                                 h=num_heads)
 
+        self.fusion_module_noBN = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.ReLU(),
+        )
+        self.fusion_module_BN = nn.Sequential(
+            nn.BatchNorm1d(256),
+        )
+
     def forward(self, obj_feature_3d, obj_feature_2d):
 
         mask = None
@@ -162,5 +170,7 @@ class MMG_teacher(torch.nn.Module):
         obj_feature_2d_ca = self.cross_attn_2d(obj_feature_2d_sa, obj_feature_3d_sa, obj_feature_3d_sa,
                                                attention_weights=distance, way=attention_matrix_way,
                                                attention_mask=mask)
+        obj_feature = self.fusion_module_noBN(obj_feature_2d_ca).permute(0, 2, 1)
+        obj_feature = self.fusion_module_BN(obj_feature).permute(0, 2, 1)
 
-        return obj_feature_2d_ca
+        return obj_feature
