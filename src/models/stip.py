@@ -56,6 +56,8 @@ class STIP(nn.Module):
                     make_fc(self.args.hidden_dim * 2, self.args.hidden_dim), nn.ReLU(),
                     make_fc(self.args.hidden_dim, self.args.hidden_dim)
                 )
+            if self.args.use_prior:
+                self.prior_embeddings = nn.Embedding(7, self.args.hidden_dim)
             if self.args.use_relation_dependency_encoding:
                 self.relation_dependency_embeddings = nn.Embedding(6, self.args.hidden_dim)
                 self.relation_dependency_content_aware_mapping = nn.Sequential(
@@ -88,8 +90,11 @@ class STIP(nn.Module):
         assert mask is not None
         # >>>>>>>>>>>>   POINT CLOUD  <<<<<<<<<<<<<<<
         end_points = {}
-        end_points = self.backbone_net(points, end_points)
-        point_features = torch.cat([end_points['fp2_features'].permute(0, 2, 1), end_points['fp2_xyz']], dim=-1)
+        if self.args.use_pointsfusion:
+            end_points = self.backbone_net(points, end_points)
+            point_features = torch.cat([end_points['fp2_features'].permute(0, 2, 1), end_points['fp2_xyz']], dim=-1)
+        else:
+            point_features = None
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
         hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
@@ -173,6 +178,7 @@ class STIP(nn.Module):
                     sampled_rel_pairs = all_pairs[sampled_rel_inds]
                     sampled_rel_reps = all_rel_reps[sampled_rel_inds]
                     sampled_rel_pred_exists = p_relation_exist_logits.squeeze(1)[sampled_rel_inds]
+
                 else:
                     # random sampling
                     sampled_neg_inds = torch.randperm(len(rel_pairs))
@@ -218,6 +224,26 @@ class STIP(nn.Module):
                     relation_dependency_encodings = self.relation_dependency_content_aware_mapping(
                         torch.cat([query_reps.permute(1,0,2).expand(*relation_dependency_encodings.shape), relation_dependency_encodings], dim=-1)
                     ).unsqueeze(2) # (#query, #query, batch size, dim)
+                if self.args.use_prior:
+                    sampled_rel_class_logits = torch.cat(
+                        [outputs_class[-1, imgid][:, :-1][sampled_rel_pairs[:, 0]].unsqueeze(-1),
+                         outputs_class[-1, imgid][:, :-1][sampled_rel_pairs[:, 1]].unsqueeze(-1)], dim=-1)
+                    sampled_rel_class = sampled_rel_class_logits.argmax(-2)
+                    prior_map = torch.zeros((len(sampled_rel_pairs), 1)).to(
+                        sampled_rel_reps.device).long()
+                    prior_map[sampled_rel_class[:, 0] <= 4] = 1
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 8) * (
+                                sampled_rel_class[:, 1] >= 6) * (sampled_rel_class[:, 1] <= 8)] = 2
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 7) * (
+                                sampled_rel_class[:, 1] == 5)] = 3
+                    prior_map[(sampled_rel_class[:, 0] == 8) * (sampled_rel_class[:, 1] == 5)] = 4
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 8) * (
+                                sampled_rel_class[:, 1] == 4)] = 5
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 7) * (
+                                sampled_rel_class[:, 1] == 1)] = 6
+                    prior_encodings = self.prior_embeddings(prior_map)
+                    query_pos_encoding = prior_encodings
+
                 if self.args.use_memory_union_mask:
                     memory_union_mask = union_mask.flatten(1)
                 if self.args.use_memory_layout_encoding:
