@@ -544,12 +544,12 @@ class STIPCriterion(nn.Module):
         probs = inputs.sigmoid()
 
 
-        weights =  torch.tensor([1.7361e-03, 1.6393e-02,3.3003e-03, 1.9543e-05, 8.4034e-03, 1.6129e-02,6.6225e-03,3.8226e-04,2.8694e-04,3.2680e-03,7.6104e-04,8.0000e-03,1.2195e-02, 9.5785e-04])
+        # weights =  torch.tensor([1.7361e-03, 1.6393e-02,3.3003e-03, 1.9543e-05, 8.4034e-03, 1.6129e-02,6.6225e-03,3.8226e-04,2.8694e-04,3.2680e-03,7.6104e-04,8.0000e-03,1.2195e-02, 9.5785e-04])
         # focal loss to balance positive/negative
         pos_inds = targets.eq(1).float()
         neg_inds = targets.lt(1).float()
-        pos_loss = torch.log(probs) * torch.pow(1 - probs, self.args.action_focal_loss_gamma) * pos_inds * weights
-        neg_loss = torch.log(1 - probs) * torch.pow(probs, self.args.action_focal_loss_gamma) * neg_inds * weights
+        pos_loss = torch.log(probs) * torch.pow(1 - probs, self.args.action_focal_loss_gamma) * pos_inds
+        neg_loss = torch.log(1 - probs) * torch.pow(probs, self.args.action_focal_loss_gamma) * neg_inds
         if prior_verb_label_mask is not None: # mask invalid predictions
             pos_loss = pos_loss * prior_verb_label_mask
             neg_loss = neg_loss * prior_verb_label_mask
