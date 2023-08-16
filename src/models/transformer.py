@@ -25,7 +25,7 @@ class Transformer(nn.Module):
     def __init__(self, d_model=512, nhead=8, num_encoder_layers=6,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
-                 return_intermediate_dec=False):
+                 return_intermediate_dec=False, multiview=False):
         super().__init__()
 
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
@@ -39,13 +39,14 @@ class Transformer(nn.Module):
         self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
                                           return_intermediate=return_intermediate_dec)
 
-        #  this part for multi view fusion
-        multiviewFusion_layer = TransformerDecoderLayer_multiview(d_model, nhead, dim_feedforward,
-                                                dropout, activation, normalize_before)
-        multiviewFusion_norm = nn.LayerNorm(d_model)
-        #  2 is the number of fusion layers
-        self.multiviewFusion = TransformerDecoder(multiviewFusion_layer, 2, multiviewFusion_norm,
-                                          return_intermediate=False)
+        if multiview:
+            #  this part for multi view fusion
+            multiviewFusion_layer = TransformerDecoderLayer_multiview(d_model, nhead, dim_feedforward,
+                                                    dropout, activation, normalize_before)
+            multiviewFusion_norm = nn.LayerNorm(d_model)
+            #  2 is the number of fusion layers
+            self.multiviewFusion = TransformerDecoder(multiviewFusion_layer, 2, multiviewFusion_norm,
+                                              return_intermediate=False)
 
         self._reset_parameters()
         self.d_model = d_model
@@ -422,6 +423,7 @@ def build_transformer(args):
         num_decoder_layers=args.dec_layers,
         normalize_before=args.pre_norm,
         return_intermediate_dec=True,
+        multiview=args.use_multiviewfusion
     )
 
 
