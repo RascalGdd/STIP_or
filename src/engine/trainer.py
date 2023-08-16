@@ -54,6 +54,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         optimizer.zero_grad()
         losses.backward()
+        # print("start!")
+        # for name, param in model.named_parameters():
+        #     if param.grad is None:
+        #         print(name)
+        # print("over!")
         if max_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
