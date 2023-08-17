@@ -272,6 +272,8 @@ if __name__ == '__main__':
     parser.add_argument('--no_interaction_decoder', action='store_true', default=False)
     parser.add_argument('--use_multiviewfusion', action='store_true', default=False)
     parser.add_argument('--use_view6', action='store_true', default=False)
+    # prior embedding
+    parser.add_argument('--use_prior', action='store_true', default=False)
 
     # not sensitive or effective
     parser.add_argument('--use_memory_union_mask', action='store_true', default=False)

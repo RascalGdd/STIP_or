@@ -54,6 +54,8 @@ class STIP(nn.Module):
                     make_fc(self.args.hidden_dim * 2, self.args.hidden_dim), nn.ReLU(),
                     make_fc(self.args.hidden_dim, self.args.hidden_dim)
                 )
+            if self.args.use_prior:
+                self.prior_embeddings = nn.Embedding(7, self.args.hidden_dim)
             if self.args.use_relation_dependency_encoding:
                 self.relation_dependency_embeddings = nn.Embedding(6, self.args.hidden_dim)
                 self.relation_dependency_content_aware_mapping = nn.Sequential(
@@ -213,6 +215,27 @@ class STIP(nn.Module):
                     relation_dependency_encodings = self.relation_dependency_content_aware_mapping(
                         torch.cat([query_reps.permute(1,0,2).expand(*relation_dependency_encodings.shape), relation_dependency_encodings], dim=-1)
                     ).unsqueeze(2) # (#query, #query, batch size, dim)
+
+                if self.args.use_prior:
+                    sampled_rel_class_logits = torch.cat(
+                        [outputs_class[-1, imgid][:, :-1][sampled_rel_pairs[:, 0]].unsqueeze(-1),
+                         outputs_class[-1, imgid][:, :-1][sampled_rel_pairs[:, 1]].unsqueeze(-1)], dim=-1)
+                    sampled_rel_class = sampled_rel_class_logits.argmax(-2)
+                    prior_map = torch.zeros((len(sampled_rel_pairs), 1)).to(
+                        sampled_rel_reps.device).long()
+                    prior_map[sampled_rel_class[:, 0] <= 4] = 1
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 8) * (
+                                sampled_rel_class[:, 1] >= 6) * (sampled_rel_class[:, 1] <= 8)] = 2
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 7) * (
+                                sampled_rel_class[:, 1] == 5)] = 3
+                    prior_map[(sampled_rel_class[:, 0] == 8) * (sampled_rel_class[:, 1] == 5)] = 4
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 8) * (
+                                sampled_rel_class[:, 1] == 4)] = 5
+                    prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 7) * (
+                                sampled_rel_class[:, 1] == 1)] = 6
+                    prior_encodings = self.prior_embeddings(prior_map)
+                    query_pos_encoding = prior_encodings
+
                 if self.args.use_memory_union_mask:
                     memory_union_mask = union_mask.flatten(1)
                 if self.args.use_memory_layout_encoding:
