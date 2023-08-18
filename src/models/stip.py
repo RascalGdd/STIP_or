@@ -594,9 +594,12 @@ class STIPPostProcess(nn.Module):
         self.args = args
 
     @torch.no_grad()
-    def forward(self, outputs, target_sizes, threshold=0, dataset='coco'):
+    def forward(self, outputs, target_sizes=None, threshold=0, dataset='coco'):
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
 
+        if target_sizes is None:
+            target_sizes = torch.zeros([len(out_logits), 2]).to(out_logits.device)
+            target_sizes[:, 0], target_sizes[:, 1] = 1536, 2048
         assert len(out_logits) == len(target_sizes)
         assert target_sizes.shape[1] == 2
 
@@ -711,10 +714,6 @@ class STIPPostProcess(nn.Module):
             # accumulate results (iterate through interaction queries)
             results = []
             for batch_idx, (os, sl, ol, vs, box, h_idx, o_idx, vl) in enumerate(zip(obj_scores, sub_labels, obj_labels, verb_scores, boxes, h_indices, o_indices, verb_labels)):
-                # label
-                # sl = torch.full_like(ol, 0) # self.subject_category_id = 0 in HICO-DET
-
-
 
                 l = torch.cat((sl, ol))
                 # boxes

@@ -19,7 +19,7 @@ from src.engine import hoi_evaluator, hoi_accumulator
 from src.models import build_model
 # import wandb
 from src.engine.evaluator_coco import coco_evaluate
-
+from src.engine.evaluator_or import or_evaluate_infer
 from src.util.logger import print_params, print_args
 from collections import OrderedDict
 
@@ -52,7 +52,8 @@ def main(args):
 
     # Data Setup
     dataset_train = build_dataset(image_set='train', args=args)
-    dataset_val = build_dataset(image_set='val' if not args.eval else 'test', args=args)
+    dataset_val = build_dataset(image_set='val', args=args)
+    dataset_infer = build_dataset(image_set='infer', args=args)
     # assert dataset_train.num_action() == dataset_val.num_action(), "Number of actions should be the same between splits"
     # args.num_classes = dataset_train.num_category()
     # args.num_actions = dataset_train.num_action()
@@ -91,6 +92,7 @@ def main(args):
                                   collate_fn=utils.collate_fn, num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
                                  drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
+    data_loader_infer = DataLoader(dataset_infer, args.batch_size, collate_fn=utils.collate_fn)
 
 
     # Model Setup
@@ -169,6 +171,11 @@ def main(args):
             if args.output_dir:
                 utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, args.output_dir / "eval.pth")
             return
+
+    if args.infer:
+        # infer only mode for 4D-OR
+        or_evaluate_infer(model, postprocessors, data_loader_infer, device, 0, args)
+        return
 
     # stats
     scenario1, scenario2 = 0, 0
@@ -253,6 +260,8 @@ if __name__ == '__main__':
     parser.add_argument('--reduce_lr_on_plateau_patience', default=2, type=int)
     parser.add_argument('--reduce_lr_on_plateau_factor', default=0.1, type=float)
     parser.add_argument('--valid_obj_ids', default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], type=list)
+    # for infer
+    parser.add_argument('--infer', action='store_true', default=False)
 
     # loss
     parser.add_argument('--proposal_focal_loss_alpha', default=0.75, type=float) # large alpha for high recall
@@ -285,6 +294,8 @@ if __name__ == '__main__':
     parser.add_argument('--relation_feature_map_from', default='backbone', help='backbone | detr_encoder')
     parser.add_argument('--use_query_fourier_encoding', action='store_true', default=False)
     parser.add_argument('--img_folder', default='data/4dor/images/',
+                        help='path')
+    parser.add_argument('--img_folder_infer', default='data/4dor/infer/',
                         help='path')
     parser.add_argument('--ann_path', default='data/4dor/',
                         help='path')

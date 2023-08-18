@@ -12,7 +12,7 @@ import src.util.misc as utils
 import src.util.logger as loggers
 from src.data.evaluators.or_eval import OREvaluator
 from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
-
+import json
 
 @torch.no_grad()
 def or_evaluate(model, postprocessors, data_loader, device, thr, args):
@@ -137,4 +137,91 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
 
     return
 
+
+def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
+    OBJECT_LABEL_MAP = {
+        0: 'anesthesia_equipment',
+        1: 'operating_table',
+        2: 'instrument_table',
+        3: 'secondary_table',
+        4: 'instrument',
+        5: 'Patient',
+        6: 'human_0',
+        7: 'human_1',
+        8: 'human_2',
+        9: 'human_3',
+        10: 'human_4',
+    }
+    VERB_LABEL_MAP = {
+        0: "Assisting",
+        1: "Cementing",
+        2: "Cleaning",
+        3: "CloseTo",
+        4: "Cutting",
+        5: "Drilling",
+        6: "Hammering",
+        7: "Holding",
+        8: "LyingOn",
+        9: "Operating",
+        10: "Preparing",
+        11: "Sawing",
+        12: "Suturing",
+        13: "Touching",
+    }
+
+
+
+    model.eval()
+
+    metric_logger = loggers.MetricLogger(mode="test", delimiter="  ")
+    header = 'Evaluation Inference (HICO-DET)'
+
+    preds = []
+    names = []
+
+    for samples, name, multiview_samples in metric_logger.log_every(data_loader, 50, header):
+        samples = samples.to(device)
+        multiview_samples = multiview_samples.to(device)
+
+        outputs = model(samples, multiview_samples=multiview_samples)
+        results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
+
+        preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
+        # For avoiding a runtime error, the copy is used
+        names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
+
+        if len(names) == 4:
+            break
+
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+    final_dict = {}
+    for idx in range(len(names)):
+        relations = []
+        name = names[idx].split("cam_")[0]+"2"
+        sub_obj_pair_save = []
+        for index in range(preds[idx]["triplet"].shape[0]):
+            inst = preds[idx]["triplet"][index]
+            sub = OBJECT_LABEL_MAP[int(inst[0])]
+            obj = OBJECT_LABEL_MAP[int(inst[1])]
+            verb = VERB_LABEL_MAP[int(inst[2])]
+            if [sub, obj] not in sub_obj_pair_save:
+                relations.append([sub, verb, obj])
+                sub_obj_pair_save.append([sub, obj])
+            else:
+                pass
+        final_dict[name] = relations
+    output_name = f'or_infer.json'
+    with open(output_name, 'w') as f:
+        json.dump(final_dict, f)
+
+
+
+
+
+
+
+
+
+    return
 

@@ -193,7 +193,7 @@ def resize(image, target, size, max_size=None, multiview_images=None):
         rescaled_multiview_images = [F.resize(k, size) for k in multiview_images]
 
     if target is None:
-        return rescaled_image, None
+        return rescaled_image, None, rescaled_multiview_images
 
     ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(rescaled_image.size, image.size))
     ratio_width, ratio_height = ratios
@@ -360,7 +360,7 @@ class Normalize(object):
         if multiview_images:
             multiview_images = [F.normalize(k, mean=self.mean, std=self.std) for k in multiview_images]
         if target is None:
-            return image, None
+            return image, None, multiview_images
         target = target.copy()
         h, w = image.shape[-2:]
         if "boxes" in target:
