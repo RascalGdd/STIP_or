@@ -26,7 +26,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     indices = []
     hoi_recognition_time = []
 
-    for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, print_freq, header):
+    for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
