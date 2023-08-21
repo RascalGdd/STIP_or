@@ -26,20 +26,13 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     indices = []
     hoi_recognition_time = []
 
-    for samples, targets in metric_logger.log_every(data_loader, 50, header):
+    for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device)
-        targets = [{k: (v.to(device) if k != 'id' else v) for k, v in t.items()} for t in targets]
+        multiview_samples = multiview_samples.to(device)
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+        points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 
-        # # register hooks to obtain intermediate outputs
-        # dec_selfattn_weights, dec_crossattn_weights = [], []
-        # if 'HOTR' in type(model).__name__:
-        #     hook_self = model.interaction_transformer.decoder.layers[-1].self_attn.register_forward_hook(lambda self, input, output: dec_selfattn_weights.append(output[1]))
-        #     hook_cross = model.interaction_transformer.decoder.layers[-1].multihead_attn.register_forward_hook(lambda self, input, output: dec_crossattn_weights.append(output[1]))
-        # else:
-        #     hook_self = model.interaction_decoder.layers[-1].self_attn.register_forward_hook(lambda self, input, output: dec_selfattn_weights.append(output[1]))
-        #     hook_cross = model.interaction_decoder.layers[-1].multihead_attn.register_forward_hook(lambda self, input, output: dec_crossattn_weights.append(output[1]))
-
-        outputs = model(samples)
+        outputs = model(samples, None, multiview_samples, points)
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessors['hoi'](outputs, orig_target_sizes, threshold=thr, dataset='or')
         hoi_recognition_time.append(results[0]['hoi_recognition_time'] * 1000)
