@@ -16,7 +16,7 @@ from src.data.evaluators.vcoco_eval import VCocoEvaluator
 from src.util.box_ops import rescale_bboxes, rescale_pairs
 from src.models.stip_utils import check_annotation, plot_cross_attention
 
-import wandb
+#import wandb
 
 @torch.no_grad()
 def vcoco_evaluate(model, criterion, postprocessors, data_loader, device, output_dir, thr):

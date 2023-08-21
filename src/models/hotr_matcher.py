@@ -9,7 +9,7 @@ from torch import nn
 from src.util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 
 import src.util.misc as utils
-import wandb
+#import wandb
 
 class HungarianPairMatcher(nn.Module):
     def __init__(self, args):
