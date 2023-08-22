@@ -27,7 +27,7 @@ class Transformer(nn.Module):
     def __init__(self, d_model=512, nhead=8, num_encoder_layers=6,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
-                 return_intermediate_dec=False, multiview=False):
+                 return_intermediate_dec=False, multiview=False, pointfusion=False):
         super().__init__()
 
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
@@ -50,9 +50,19 @@ class Transformer(nn.Module):
             self.multiviewFusion = TransformerDecoder(multiviewFusion_layer, 2, multiviewFusion_norm,
                                               return_intermediate=False)
 
-        #  this part for points fusion
-        self.points_mlp = MLP(291, 256, 256, 1)
-        self.pointsFusion = MMG_teacher(dim_node=d_model, num_heads=nhead)
+        if pointfusion:
+            #  this part for points fusion
+            self.points_mlp = MLP(291, 256, 256, 1)
+            pointsFusion_layer = TransformerDecoderLayer_multiview(d_model, nhead, dim_feedforward,
+                                                    dropout, activation, normalize_before)
+            pointsFusion_norm = nn.LayerNorm(d_model)
+            #  2 is the number of fusion layers
+            self.pointsFusion = TransformerDecoder(pointsFusion_layer, 2, pointsFusion_norm,
+                                              return_intermediate=False)
+
+        # #  this part for points fusion
+        # self.points_mlp = MLP(291, 256, 256, 1)
+        # self.pointsFusion = MMG_teacher(dim_node=d_model, num_heads=nhead)
 
         self._reset_parameters()
         self.d_model = d_model
@@ -92,7 +102,7 @@ class Transformer(nn.Module):
                                           pos=pos_embed_multiview, query_pos=pos_embed)[0]
         if points_fusion:
             point_features = self.points_mlp(point_features)
-            memory = self.pointsFusion(point_features, memory.permute(1, 0, 2)).permute(1, 0, 2)
+            memory = self.pointsFusion(memory, point_features.permute(1, 0, 2))[0]
 
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
         return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w)
@@ -435,7 +445,8 @@ def build_transformer(args):
         num_decoder_layers=args.dec_layers,
         normalize_before=args.pre_norm,
         return_intermediate_dec=True,
-        multiview=args.use_multiviewfusion
+        multiview=args.use_multiviewfusion,
+        pointfusion=args.use_pointsfusion
     )
 
 
