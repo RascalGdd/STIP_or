@@ -276,6 +276,8 @@ if __name__ == '__main__':
     parser.add_argument('--use_head_semantic_feature', action='store_true', default=False)
     # point cloud arguments
     parser.add_argument('--use_pointsfusion', action='store_true', default=False)
+    parser.add_argument('--use_simple_pointsfusion', action='store_true', default=False)
+
     # prior embedding
     parser.add_argument('--use_prior', action='store_true', default=False)
 

@@ -45,6 +45,8 @@ class STIP(nn.Module):
         )
 
         # relation classification
+        if self.args.use_simple_pointsfusion and self.args.use_pointsfusion:
+            self.pointsfeats_proj = make_fc(291, rel_rep_dim)
         self.rel_query_pre_proj = make_fc(rel_rep_dim, self.args.hidden_dim)
         if self.args.no_interaction_decoder:
             self.args.hoi_aux_loss = False
@@ -199,7 +201,13 @@ class STIP(nn.Module):
                 sampled_rel_pred_exists = p_relation_exist_logits.squeeze(1)[sampled_rel_inds]
 
             # >>>>>>>>>>>> relation classification <<<<<<<<<<<<<<<
+            if self.args.use_simple_pointsfusion and self.args.use_pointsfusion:
+                points_feats = point_features[imgid]
+                points_feats = self.pointsfeats_proj(points_feats)
+                sampled_rel_reps = sampled_rel_reps + torch.matmul(torch.matmul(sampled_rel_reps, points_feats.transpose(0, 1)), points_feats)
+
             query_reps = self.rel_query_pre_proj(sampled_rel_reps).unsqueeze(1)
+
             if self.args.no_interaction_decoder:
                 outs = query_reps.unsqueeze(0)
             else:
