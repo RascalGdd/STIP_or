@@ -89,7 +89,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         det_labels_sop_top = preds[iter]['triplet']
 
         all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
-        all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14)], dim=1)
+        all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14).to(all_pairs.device)], dim=1)
         for k in range(all_pairs.shape[0]):
             pair = all_pairs[k]
             for m in range(gt_labels_sop.shape[0]):
