@@ -196,8 +196,6 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         # For avoiding a runtime error, the copy is used
         names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
 
-        if len(names) >= 4:
-            break
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
