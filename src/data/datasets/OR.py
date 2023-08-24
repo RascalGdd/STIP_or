@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 import torch
 import torch.utils.data
-import torchvision
+from torch.utils.data import Dataset
 from pycocotools import mask as coco_mask
 import random
 import src.data.transforms.transforms as T
@@ -21,9 +21,6 @@ import open3d as o3d
 from PIL import Image
 import numpy as np
 from torchvision.datasets.vision import VisionDataset
-#     def _load_image(self, id: int) -> Image.Image:
-#         path = self.coco.loadImgs(id)[0]["file_name"]
-#         return Image.open(os.path.join(self.root, path)).convert("RGB")
 
 def random_sampling(pc, num_sample, replace=None, return_choices=False):
     """ Input is NxC, output is num_samplexC
@@ -34,6 +31,44 @@ def random_sampling(pc, num_sample, replace=None, return_choices=False):
         return pc[choices], choices
     else:
         return pc[choices]
+
+class CocoDetection_infer(Dataset):
+    def __init__(self, infer_folder, transforms):
+        super().__init__()
+        self._transforms = transforms
+        self.img_folder = os.path.join(infer_folder, "images_infer")
+        self.pcd_folder = os.path.join(infer_folder, "points_infer")
+        total_list = os.listdir(self.img_folder)
+        self.multiview_list = []
+        self.views = [2, 3, 6]
+        self.img_list = [inst for inst in total_list if "cam_1" in inst]
+        for k in self.img_list:
+            self.multiview_list.append([inst for inst in total_list if (k.split("_cam")[0] in inst and "cam_1" not in inst and int(inst.split("_")[-1].split(".")[0]) in self.views)])
+
+
+    def __getitem__(self, idx):
+        image_id = self.img_list[idx]
+        multiview_ids = self.multiview_list[idx]
+        img = Image.open(os.path.join(self.img_folder, image_id)).convert("RGB")
+        images_multiview = [Image.open(os.path.join(self.img_folder, id)).convert("RGB") for id in multiview_ids]
+        points_path = os.path.join(self.pcd_folder, image_id.split("_cam")[0]+".pcd")
+        pcd = o3d.io.read_point_cloud(points_path)
+        point_cloud = np.concatenate([np.asarray(pcd.points), np.asarray(pcd.colors)], axis=1)
+        # scaling
+        point_cloud[:, :3] /= 1000
+        point_cloud[:, 3:] = (point_cloud[:, 3:] - np.array([0.49, 0.54, 0.58]))
+        point_cloud, choices = random_sampling(point_cloud, 200000, return_choices=True)
+        point_cloud = torch.tensor(point_cloud).type(torch.FloatTensor)
+
+        if self._transforms is not None:
+            img, _, images_multiview = self._transforms(img, None, images_multiview)
+
+        return img, image_id, images_multiview, point_cloud
+
+    def __len__(self):
+        return len(self.img_list)
+
+
 
 
 class MultiView_CocoDetection(VisionDataset):
@@ -280,7 +315,7 @@ def make_coco_transforms(image_set):
             ),
             normalize])
 
-    if image_set == 'val' or "test":
+    if image_set == 'val' or "test" or "infer":
         return T.Compose([
             T.RandomResize([800], max_size=1333),
             normalize,
@@ -296,11 +331,17 @@ def build(image_set, args):
 
     if image_set == 'train':
         ann_file = ann_path + 'train.json'
-    elif image_set == 'val' or image_set == 'test':
-        if args.eval:
-            ann_file = ann_path + 'test.json'
-        else:
-            ann_file = ann_path + 'val.json'
+    elif image_set == 'val':
+        ann_file = ann_path + 'val.json'
+    elif image_set == 'infer':
+        img_folder = args.img_folder_infer
+        dataset = CocoDetection_infer(img_folder, transforms=make_coco_transforms(image_set))
+        return dataset
+    # elif image_set == 'val' or image_set == 'test':
+    #     if args.eval:
+    #         ann_file = ann_path + 'test.json'
+    #     else:
+    #         ann_file = ann_path + 'val.json'
 
     dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=False)
     return dataset

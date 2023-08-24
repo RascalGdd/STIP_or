@@ -25,7 +25,7 @@ def crop(image, target, region, multiview_images=None):
     target["size"] = torch.tensor([h, w])
     max_size = torch.as_tensor([w, h], dtype=torch.float32)
 
-    fields = ["labels", "area", "iscrowd"] # add additional fields
+    fields = ["labels", "area", "iscrowd"]  # add additional fields
     if "inst_actions" in target.keys():
         fields.append("inst_actions")
 
@@ -82,7 +82,7 @@ def crop(image, target, region, multiview_images=None):
             keep = target['masks'].flatten(1).any(1)
 
         for field in fields:
-            if field in target: # added this because there is no 'iscrowd' field in v-coco dataset
+            if field in target:  # added this because there is no 'iscrowd' field in v-coco dataset
                 target[field] = target[field][keep]
 
     # remove elements that have redundant area
@@ -95,7 +95,8 @@ def crop(image, target, region, multiview_images=None):
             if str((cropped_box, cropped_lbl)) not in cnr:
                 cnr.append(str((cropped_box, cropped_lbl)))
                 keep_idx.append(True)
-            else: keep_idx.append(False)
+            else:
+                keep_idx.append(False)
 
         for field in fields:
             if field in target:
@@ -146,7 +147,7 @@ def hflip(image, target, multiview_images=None):
         if obj_mask.sum() != 0:
             o_tmp = oboxes[:, [2, 1, 0, 3]] * torch.as_tensor([-1, 1, -1, 1]) + torch.as_tensor([w, 0, w, 0])
             oboxes[obj_mask] = o_tmp[obj_mask]
-        
+
         pair_boxes = torch.cat([hboxes, oboxes], dim=-1)
         target["pair_boxes"] = pair_boxes
 
@@ -193,7 +194,7 @@ def resize(image, target, size, max_size=None, multiview_images=None):
         rescaled_multiview_images = [F.resize(k, size) for k in multiview_images]
 
     if target is None:
-        return rescaled_image, None
+        return rescaled_image, None, rescaled_multiview_images
 
     ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(rescaled_image.size, image.size))
     ratio_width, ratio_height = ratios
@@ -214,7 +215,7 @@ def resize(image, target, size, max_size=None, multiview_images=None):
         if obj_mask.sum() != 0:
             scaled_oboxes = oboxes[obj_mask] * torch.as_tensor([ratio_width, ratio_height, ratio_width, ratio_height])
             oboxes[obj_mask] = scaled_oboxes
-        
+
         target["pair_boxes"] = torch.cat([hboxes, oboxes], dim=-1)
 
     if "area" in target:
@@ -322,6 +323,7 @@ class RandomSelect(object):
     Randomly selects between transforms1 and transforms2,
     with probability p for transforms1 and (1 - p) for transforms2
     """
+
     def __init__(self, transforms1, transforms2, p=0.5):
         self.transforms1 = transforms1
         self.transforms2 = transforms2
@@ -360,7 +362,7 @@ class Normalize(object):
         if multiview_images:
             multiview_images = [F.normalize(k, mean=self.mean, std=self.std) for k in multiview_images]
         if target is None:
-            return image, None
+            return image, None, multiview_images
         target = target.copy()
         h, w = image.shape[-2:]
         if "boxes" in target:
@@ -379,11 +381,12 @@ class Normalize(object):
             if obj_mask.sum() != 0:
                 oboxes[obj_mask] = box_xyxy_to_cxcywh(oboxes[obj_mask])
                 oboxes[obj_mask] = oboxes[obj_mask] / torch.tensor([w, h, w, h], dtype=torch.float32)
-            
+
             pair_boxes = torch.cat([hboxes, oboxes], dim=-1)
             target["pair_boxes"] = pair_boxes
 
         return image, target, multiview_images
+
 
 class ColorJitter(object):
     def __init__(self, brightness=0, contrast=0, saturatio=0, hue=0):
@@ -391,6 +394,7 @@ class ColorJitter(object):
 
     def __call__(self, img, target, multiview_images):
         return self.color_jitter(img), target, [self.color_jitter(k) for k in multiview_images]
+
 
 class Compose(object):
     def __init__(self, transforms):

@@ -610,8 +610,12 @@ class STIPPostProcess(nn.Module):
         self.args = args
 
     @torch.no_grad()
-    def forward(self, outputs, target_sizes, threshold=0, dataset='coco'):
+    def forward(self, outputs, target_sizes=None, threshold=0, dataset='coco'):
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
+
+        if target_sizes is None:
+            target_sizes = torch.zeros([len(out_logits), 2]).to(out_logits.device)
+            target_sizes[:, 0], target_sizes[:, 1] = 1536, 2048
 
         assert len(out_logits) == len(target_sizes)
         assert target_sizes.shape[1] == 2

@@ -97,6 +97,7 @@ class Transformer(nn.Module):
         pos_embed_multiview_split = pos_embed_multiview_remain_shape.split(3, dim=1)
         pos_embed_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in pos_embed_multiview_split], dim=0).permute(1, 0, 2)
 
+
         if multiview_fusion:
             memory = self.multiviewFusion(memory, memory_multiview, memory_key_padding_mask=mask_multiview,
                                           pos=pos_embed_multiview, query_pos=pos_embed)[0]

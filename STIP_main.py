@@ -5,7 +5,7 @@ import random
 import time
 import multiprocessing
 from pathlib import Path
-
+from src.engine.evaluator_or import or_evaluate_infer
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, DistributedSampler
@@ -52,7 +52,9 @@ def main(args):
 
     # Data Setup
     dataset_train = build_dataset(image_set='train', args=args)
-    dataset_val = build_dataset(image_set='val' if not args.eval else 'test', args=args)
+    # dataset_val = build_dataset(image_set='val' if not args.eval else 'test', args=args)
+    dataset_val = build_dataset(image_set='val', args=args)
+    dataset_infer = build_dataset(image_set='infer', args=args)
     # assert dataset_train.num_action() == dataset_val.num_action(), "Number of actions should be the same between splits"
     # args.num_classes = dataset_train.num_category()
     # args.num_actions = dataset_train.num_action()
@@ -91,6 +93,7 @@ def main(args):
                                   collate_fn=utils.collate_fn, num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
                                  drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
+    data_loader_infer = DataLoader(dataset_infer, args.batch_size, collate_fn=utils.collate_fn)
 
 
     # Model Setup
@@ -144,6 +147,11 @@ def main(args):
         else:
             checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'])
+
+    if args.infer:
+        # infer only mode for 4D-OR
+        or_evaluate_infer(model, postprocessors, data_loader_infer, device, 0, args)
+        return
 
     if args.eval:
         # test only mode
@@ -292,8 +300,12 @@ if __name__ == '__main__':
     parser.add_argument('--use_query_fourier_encoding', action='store_true', default=False)
     parser.add_argument('--img_folder', default='data/4dor/images/',
                         help='path')
+    parser.add_argument('--img_folder_infer', default='data/4dor/infer/',
+                        help='path')
     parser.add_argument('--ann_path', default='data/4dor/',
                         help='path')
+    # for infer
+    parser.add_argument('--infer', action='store_true', default=False)
 
     args = parser.parse_args()
     args.STIP_relation_head = True
