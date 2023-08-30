@@ -114,6 +114,8 @@ class STIP(nn.Module):
             det2gt_indices = self.detr_matcher(detr_outs, targets)
             gt_rel_pairs = []
             for (ds, gs), t in zip(det2gt_indices, targets):
+                ds = ds.to(self.args.device)
+                gs = gs.to(self.args.device)
                 gt2det_map = torch.zeros(len(gs)).to(device=ds.device, dtype=ds.dtype)
                 gt2det_map[gs] = ds
                 gt_rels = gt2det_map[t['relation_map'].sum(-1).nonzero(as_tuple=False)]
@@ -146,24 +148,64 @@ class STIP(nn.Module):
             inst_scores, inst_labels = probs[:, :-1].max(-1)
             human_instance_ids = torch.logical_and(inst_scores > 0.5, inst_labels <= 10).nonzero(as_tuple=False)
             bg_instance_ids = (probs[:, -1] > 1)
-            if self.args.apply_nms_on_detr and not self.training:
+            # if self.args.nonetrain and not self.training:
+            #     suppress_ids = self.apply_nms_or(inst_scores, inst_labels, outputs_coord[-1, imgid])
+            #     bg_instance_ids[suppress_ids] = True
+            suppress_ids = None
+            if self.args.apply_nms_on_detr and self.args.nonetrain and not self.training:
+                suppress_ids = self.apply_nms_or(inst_scores, inst_labels, outputs_coord[-1, imgid])
+                bg_instance_ids[suppress_ids] = True
+            elif self.args.apply_nms_on_detr and not self.training:
                 suppress_ids = self.apply_nms(inst_scores, inst_labels, outputs_coord[-1, imgid])
                 bg_instance_ids[suppress_ids] = True
 
-            rel_mat = torch.zeros((num_nodes, num_nodes))
-            rel_mat[human_instance_ids, ~bg_instance_ids] = 1 # subj is human, obj is not background
+
+            rel_mat = torch.zeros((num_nodes, num_nodes)).to(self.args.device)
+            if not self.args.nonetrain:
+                rel_mat[human_instance_ids, ~bg_instance_ids] = 1 # subj is human, obj is not background
+            else:
+                if suppress_ids is not None:
+                    human_instance_ids_squeeze = torch.tensor([torch.tensor(i) for i in human_instance_ids if i not in suppress_ids]).to(self.args.device)
+                    human_instance_ids = human_instance_ids_squeeze.unsqueeze(-1)
+                else:
+                    human_instance_ids_squeeze = human_instance_ids.squeeze(-1)
+
+
             if self.args.dataset_file != 'vcoco': rel_mat.fill_diagonal_(0)
-            if self.args.adaptive_relation_query_num:
-                if len(rel_mat.nonzero(as_tuple=False)) == 0: rel_mat[0,1] = 1
-            else: # ensure enough queries
-                if len(rel_mat.nonzero(as_tuple=False)) < self.args.num_hoi_queries:
-                    tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(human_instance_ids) > 0 else 0
-                    rel_mat[tmp_id] = 1
+
+            # ensure enough queries
+            if len(rel_mat.nonzero(as_tuple=False)) < self.args.num_hoi_queries and not self.args.nonetrain:
+                tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(human_instance_ids) > 0 else 0
+                rel_mat[tmp_id] = 1
 
             if self.training:
-                rel_mat[gt_rel_pairs[imgid][:,:1], ~bg_instance_ids] = 1
-                rel_mat[gt_rel_pairs[imgid][:,0], gt_rel_pairs[imgid][:, 1]] = 0
-                rel_pairs = rel_mat.nonzero(as_tuple=False) # neg pairs
+                if self.args.nonetrain:
+                    gt_ids = det2gt_indices[imgid][0].to(self.args.device)
+                    human_instance_ids_squeeze = torch.cat([human_instance_ids_squeeze, gt_ids]).unique()
+                    human_instance_ids = human_instance_ids_squeeze.unsqueeze(1)
+                    rel_mat[human_instance_ids, :] += 1
+                    rel_mat[:, human_instance_ids] += 1
+                    rel_mat[rel_mat < 2] = 0
+                    rel_mat[rel_mat >= 2] = 1
+                    rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+
+                    rel_mat_gt = torch.zeros_like(rel_mat)
+                    rel_mat_gt[det2gt_indices[imgid][0], :] += 1
+                    rel_mat_gt[:, det2gt_indices[imgid][0]] += 1
+                    rel_mat_gt[rel_mat_gt < 2] = 0
+                    rel_mat[rel_mat_gt == 2] = 0
+                    rel_mat.fill_diagonal_(0)
+
+                    if len(rel_mat.nonzero(as_tuple=False)) < self.args.num_hoi_queries and self.args.nonetrain:
+                        tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(
+                            human_instance_ids) > 0 else 0
+                        rel_mat[tmp_id] = 1
+                    rel_pairs = rel_mat.nonzero(as_tuple=False)  # neg pairs
+
+                else:
+                    rel_mat[gt_rel_pairs[imgid][:, :1], ~bg_instance_ids] = 1
+                    rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+                    rel_pairs = rel_mat.nonzero(as_tuple=False) # neg pairs
 
                 if self.args.use_hard_mining_for_relation_discovery:
                     # hard negative sampling
@@ -302,6 +344,29 @@ class STIP(nn.Module):
 
     # merge boxes (NMS)
     def apply_nms(self, inst_scores, inst_labels, cxcywh_boxes, threshold=0.7):
+        xyxy_boxes = box_ops.box_cxcywh_to_xyxy(cxcywh_boxes)
+        box_areas = (xyxy_boxes[:, 2:] - xyxy_boxes[:, :2]).prod(-1)
+        box_area_sum = box_areas.unsqueeze(1) + box_areas.unsqueeze(0)
+
+        union_boxes = torch.cat([torch.min(xyxy_boxes.unsqueeze(1)[:, :, :2], xyxy_boxes.unsqueeze(0)[:, :, :2]),
+                                 torch.max(xyxy_boxes.unsqueeze(1)[:, :, 2:], xyxy_boxes.unsqueeze(0)[:, :, 2:])], dim=-1)
+        union_area = (union_boxes[:,:,2:] - union_boxes[:,:,:2]).prod(-1)
+        iou = torch.clamp(box_area_sum - union_area, min=0) / union_area
+        box_match_mat = torch.logical_and(iou > threshold, inst_labels.unsqueeze(1) == inst_labels.unsqueeze(0))
+
+        suppress_ids = []
+        for box_match in box_match_mat:
+            group_ids = box_match.nonzero(as_tuple=False).squeeze(1)
+            if len(group_ids) > 1:
+                max_score_inst_id = group_ids[inst_scores[group_ids].argmax()]
+                bg_ids = group_ids[group_ids!=max_score_inst_id]
+                suppress_ids.append(bg_ids)
+                box_match_mat[:, bg_ids] = False
+        if len(suppress_ids) > 0:
+            suppress_ids = torch.cat(suppress_ids, dim=0)
+        return suppress_ids
+
+    def apply_nms_or(self, inst_scores, inst_labels, cxcywh_boxes, threshold=-1):
         xyxy_boxes = box_ops.box_cxcywh_to_xyxy(cxcywh_boxes)
         box_areas = (xyxy_boxes[:, 2:] - xyxy_boxes[:, :2]).prod(-1)
         box_area_sum = box_areas.unsqueeze(1) + box_areas.unsqueeze(0)
