@@ -50,6 +50,10 @@ def main(args):
     np.random.seed(seed)
     random.seed(seed)
 
+    args.num_classes = 11
+    args.num_actions = 15
+    args.action_names = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"]
+
     # Data Setup
     dataset_train = build_dataset(image_set='train', args=args)
     # dataset_val = build_dataset(image_set='val' if not args.eval else 'test', args=args)
@@ -59,10 +63,6 @@ def main(args):
     # args.num_classes = dataset_train.num_category()
     # args.num_actions = dataset_train.num_action()
     # args.action_names = dataset_train.get_actions()
-
-    args.num_classes = 11
-    args.num_actions = 14
-    args.action_names = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"]
 
 
     if args.share_enc: args.hoi_enc_layers = args.enc_layers

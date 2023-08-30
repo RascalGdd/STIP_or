@@ -114,6 +114,7 @@ class STIP(nn.Module):
             det2gt_indices = self.detr_matcher(detr_outs, targets)
             gt_rel_pairs = []
             for (ds, gs), t in zip(det2gt_indices, targets):
+                ds, gs = ds.to(self.args.device), gs.to(self.args.device)
                 gt2det_map = torch.zeros(len(gs)).to(device=ds.device, dtype=ds.dtype)
                 gt2det_map[gs] = ds
                 gt_rels = gt2det_map[t['relation_map'].sum(-1).nonzero(as_tuple=False)]
@@ -163,7 +164,7 @@ class STIP(nn.Module):
             if self.training:
                 rel_mat[gt_rel_pairs[imgid][:,:1], ~bg_instance_ids] = 1
                 rel_mat[gt_rel_pairs[imgid][:,0], gt_rel_pairs[imgid][:, 1]] = 0
-                rel_pairs = rel_mat.nonzero(as_tuple=False) # neg pairs
+                rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device) # neg pairs
 
                 if self.args.use_hard_mining_for_relation_discovery:
                     # hard negative sampling

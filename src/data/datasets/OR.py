@@ -145,10 +145,11 @@ class MultiView_CocoDetection(VisionDataset):
         return len(self.ids)
 
 class CocoDetection(MultiView_CocoDetection):
-    def __init__(self, img_folder, ann_file, transforms, return_masks):
+    def __init__(self, img_folder, ann_file, transforms, return_masks, args):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks)
+        self.num_actions = args.num_actions
 
         #TODO load relationship
         with open('/'.join(ann_file.split('/')[:-1])+'/rel.json', 'r') as f:
@@ -177,7 +178,7 @@ class CocoDetection(MultiView_CocoDetection):
         img, target = self.prepare(img, target)
         if self._transforms is not None:
             img, target, images_multiview = self._transforms(img, target, images_multiview)
-        target["hoi_labels"] = one_hot(torch.cat([target["rel_annotations"][:, 2]]), num_classes=15).type(torch.float32)
+        target["hoi_labels"] = one_hot(torch.cat([target["rel_annotations"][:, 2]]), num_classes=self.num_actions).type(torch.float32)
         target["obj_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 1]]])
         target["sub_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 0]]])
         sub_boxes = torch.cat([target['boxes'][target['rel_annotations'][:, 0]]])
@@ -193,11 +194,11 @@ class CocoDetection(MultiView_CocoDetection):
         for _ in range(target['boxes'].shape[0]):
             kept_box_indices.append(_)
         sub_obj_pairs = [(inst[0], inst[1])for inst in target["rel_annotations"]]
-        relation_map = torch.zeros((len(target['boxes']), len(target['boxes']), 14))
+        relation_map = torch.zeros((len(target['boxes']), len(target['boxes']), self.num_actions))
         for sub_obj_pair in sub_obj_pairs:
             kept_subj_id = kept_box_indices.index(sub_obj_pair[0])
             kept_obj_id = kept_box_indices.index(sub_obj_pair[1])
-            relation_map[kept_subj_id, kept_obj_id] = target["hoi_labels"][sub_obj_pairs.index(sub_obj_pair), :-1].clone().detach()
+            relation_map[kept_subj_id, kept_obj_id] = target["hoi_labels"][sub_obj_pairs.index(sub_obj_pair), :].clone().detach()
         target['relation_map'] = relation_map
         target['hois'] = relation_map.nonzero(as_tuple=False)
 
@@ -345,5 +346,5 @@ def build(image_set, args):
     #     else:
     #         ann_file = ann_path + 'val.json'
 
-    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=False)
+    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=False, args=args)
     return dataset
