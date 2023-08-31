@@ -51,7 +51,7 @@ def main(args):
     random.seed(seed)
 
     args.num_classes = 11
-    args.num_actions = 15
+    args.num_actions = 14
     args.action_names = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"]
 
     # Data Setup
