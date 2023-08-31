@@ -88,15 +88,15 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         gt_labels_sop = gts[iter]['gt_triplet']
         det_labels_sop_top = preds[iter]['triplet']
 
-        # all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
-        # all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14).to(all_pairs.device)], dim=1)
-        # for k in range(all_pairs.shape[0]):
-        #     pair = all_pairs[k]
-        #     for m in range(gt_labels_sop.shape[0]):
-        #         tmp = gt_labels_sop[m]
-        #         if tmp[0] == pair[0] and tmp[1] == pair[1]:
-        #             all_pairs[k] = tmp
-        # gt_labels_sop = all_pairs
+        all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
+        all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14).to(all_pairs.device)], dim=1)
+        for k in range(all_pairs.shape[0]):
+            pair = all_pairs[k]
+            for m in range(gt_labels_sop.shape[0]):
+                tmp = gt_labels_sop[m]
+                if tmp[0] == pair[0] and tmp[1] == pair[1]:
+                    all_pairs[k] = tmp
+        gt_labels_sop = all_pairs
 
         if use_tricks:
             det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[6, 1, 9]])], dim=0)
