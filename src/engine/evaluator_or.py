@@ -117,6 +117,17 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                             continue
                         if det_labels_sop_top[idx][2] == 9 and ((det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
                             continue
+                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (det_labels_sop_top[idx][1] != 5)) and (det_labels_sop_top[idx][2] in [1,2,4,5,6,11,12]):
+                            continue
+                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] != 4)) and (det_labels_sop_top[idx][2]==7):
+                            continue
+                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] != 5)) and (
+                                det_labels_sop_top[idx][2] == 10):
+                            continue
+                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] not in [6, 7, 8])) and (
+                                det_labels_sop_top[idx][2] == 0):
+                            continue
+
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])
                         found = True
