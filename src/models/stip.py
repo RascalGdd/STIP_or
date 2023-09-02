@@ -148,64 +148,52 @@ class STIP(nn.Module):
             inst_scores, inst_labels = probs[:, :-1].max(-1)
             human_instance_ids = torch.logical_and(inst_scores > 0.5, inst_labels <= 10).nonzero(as_tuple=False)
             bg_instance_ids = (probs[:, -1] > 1)
-            # if self.args.nonetrain and not self.training:
-            #     suppress_ids = self.apply_nms_or(inst_scores, inst_labels, outputs_coord[-1, imgid])
-            #     bg_instance_ids[suppress_ids] = True
+
             suppress_ids = None
-            if self.args.apply_nms_on_detr and self.args.nonetrain and not self.training:
-                suppress_ids = self.apply_nms_or(inst_scores, inst_labels, outputs_coord[-1, imgid])
-                bg_instance_ids[suppress_ids] = True
-            elif self.args.apply_nms_on_detr and not self.training:
-                suppress_ids = self.apply_nms(inst_scores, inst_labels, outputs_coord[-1, imgid])
-                bg_instance_ids[suppress_ids] = True
+            # if self.args.apply_nms_on_detr and not self.training:
+            suppress_ids = self.apply_nms_or(inst_scores, inst_labels, outputs_coord[-1, imgid])
+            bg_instance_ids[suppress_ids] = True
+            # elif self.args.apply_nms_on_detr and not self.training:
+            #     suppress_ids = self.apply_nms(inst_scores, inst_labels, outputs_coord[-1, imgid])
+            #     bg_instance_ids[suppress_ids] = True
 
 
             rel_mat = torch.zeros((num_nodes, num_nodes)).to(self.args.device)
-            if not self.args.nonetrain:
-                rel_mat[human_instance_ids, ~bg_instance_ids] = 1 # subj is human, obj is not background
+
+            if suppress_ids is not None:
+                human_instance_ids_squeeze = torch.tensor([torch.tensor(i) for i in human_instance_ids if i not in suppress_ids]).to(self.args.device)
             else:
-                if suppress_ids is not None:
-                    human_instance_ids_squeeze = torch.tensor([torch.tensor(i) for i in human_instance_ids if i not in suppress_ids]).to(self.args.device)
-                    human_instance_ids = human_instance_ids_squeeze.unsqueeze(-1)
-                else:
-                    human_instance_ids_squeeze = human_instance_ids.squeeze(-1)
+                human_instance_ids_squeeze = human_instance_ids.squeeze(-1)
 
 
-            if self.args.dataset_file != 'vcoco': rel_mat.fill_diagonal_(0)
+            # if self.args.dataset_file != 'vcoco': rel_mat.fill_diagonal_(0)
 
-            # ensure enough queries
-            if len(rel_mat.nonzero(as_tuple=False)) < self.args.num_hoi_queries and not self.args.nonetrain:
-                tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(human_instance_ids) > 0 else 0
-                rel_mat[tmp_id] = 1
+            # # ensure enough queries
+            # if len(rel_mat.nonzero(as_tuple=False)) < self.args.num_hoi_queries:
+            #     tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(human_instance_ids) > 0 else 0
+            #     rel_mat[tmp_id] = 1
 
             if self.training:
-                if self.args.nonetrain:
-                    gt_ids = det2gt_indices[imgid][0].to(self.args.device)
-                    human_instance_ids_squeeze = torch.cat([human_instance_ids_squeeze, gt_ids]).unique()
-                    human_instance_ids = human_instance_ids_squeeze.unsqueeze(1)
-                    rel_mat[human_instance_ids, :] += 1
-                    rel_mat[:, human_instance_ids] += 1
-                    rel_mat[rel_mat < 2] = 0
-                    rel_mat[rel_mat >= 2] = 1
-                    rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+                gt_ids = det2gt_indices[imgid][0].to(self.args.device)
+                human_instance_ids_squeeze = torch.cat([human_instance_ids_squeeze, gt_ids]).unique()
+                human_instance_ids = human_instance_ids_squeeze.unsqueeze(1)
+                rel_mat[human_instance_ids, :] += 1
+                rel_mat[:, human_instance_ids] += 1
+                rel_mat[rel_mat < 2] = 0
+                rel_mat[rel_mat >= 2] = 1
+                rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+                rel_mat.fill_diagonal_(0)
 
-                    rel_mat_gt = torch.zeros_like(rel_mat)
-                    rel_mat_gt[det2gt_indices[imgid][0], :] += 1
-                    rel_mat_gt[:, det2gt_indices[imgid][0]] += 1
-                    rel_mat_gt[rel_mat_gt < 2] = 0
-                    rel_mat[rel_mat_gt == 2] = 0
-                    rel_mat.fill_diagonal_(0)
+                if len(rel_mat.nonzero(as_tuple=False)) == 0:
+                    tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(
+                        human_instance_ids) > 0 else 0
+                    rel_mat[tmp_id] = 1
+                rel_pairs = rel_mat.nonzero(as_tuple=False)  # neg pairs
 
-                    if len(rel_mat.nonzero(as_tuple=False)) < self.args.num_hoi_queries and self.args.nonetrain:
-                        tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(
-                            human_instance_ids) > 0 else 0
-                        rel_mat[tmp_id] = 1
-                    rel_pairs = rel_mat.nonzero(as_tuple=False)  # neg pairs
-
-                else:
-                    rel_mat[gt_rel_pairs[imgid][:, :1], ~bg_instance_ids] = 1
-                    rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
-                    rel_pairs = rel_mat.nonzero(as_tuple=False) # neg pairs
+                # else:
+                #     rel_mat[gt_rel_pairs[imgid][:, :1], ~bg_instance_ids] = 1
+                #     rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+                #     rel_pairs = rel_mat.nonzero(as_tuple=False) # neg pairs
 
                 if self.args.use_hard_mining_for_relation_discovery:
                     # hard negative sampling
@@ -216,8 +204,8 @@ class STIP(nn.Module):
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
                     _, sort_rel_inds = p_relation_exist_logits[gt_pair_count:].squeeze(1).sort(descending=True)
-                    # _, sort_rel_inds = torch.cat([inst_scores[all_pairs[:, 1:]], p_relation_exist_logits.sigmoid()], dim=-1).prod(-1)[gt_pair_count:].sort(descending=True)
-                    sampled_rel_inds = torch.cat([gt_inds, sort_rel_inds+gt_pair_count])[:self.args.num_hoi_queries]
+                    sampled_rel_inds = torch.cat([gt_inds, sort_rel_inds + gt_pair_count])
+                    # sampled_rel_inds = torch.cat([gt_inds, sort_rel_inds+gt_pair_count])[:self.args.num_hoi_queries]
 
                     sampled_rel_pairs = all_pairs[sampled_rel_inds]
                     sampled_rel_reps = all_rel_reps[sampled_rel_inds]
@@ -230,13 +218,26 @@ class STIP(nn.Module):
                     sampled_rel_reps = self.coarse_relation_feature_extractor(sampled_rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid)
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
+                human_instance_ids = human_instance_ids_squeeze.unsqueeze(1)
+                rel_mat[human_instance_ids, :] += 1
+                rel_mat[:, human_instance_ids] += 1
+                rel_mat[rel_mat < 2] = 0
+                rel_mat[rel_mat >= 2] = 1
+                rel_mat.fill_diagonal_(0)
+
+                if len(rel_mat.nonzero(as_tuple=False)) == 0:
+                    tmp_id = np.random.choice(human_instance_ids.squeeze(1).tolist()) if len(
+                        human_instance_ids) > 0 else 0
+                    rel_mat[tmp_id] = 1
+
+
                 rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device)
                 rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
                 p_relation_exist_logits = self.relation_proposal_mlp(rel_reps)
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
-                # _, sort_rel_inds = torch.cat([inst_scores[rel_pairs[:, 1:]], p_relation_exist_logits.sigmoid()], dim=-1).prod(-1).sort(descending=True)
-                sampled_rel_inds = sort_rel_inds[:self.args.num_hoi_queries]
+                sampled_rel_inds = sort_rel_inds
+                # sampled_rel_inds = sort_rel_inds[:self.args.num_hoi_queries]
 
                 sampled_rel_pairs = rel_pairs[sampled_rel_inds]
                 sampled_rel_reps = rel_reps[sampled_rel_inds]
