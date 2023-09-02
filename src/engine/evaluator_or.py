@@ -76,8 +76,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     preds = [img_preds for i, img_preds in enumerate(preds) if i in indices]
     gts = [img_gts for i, img_gts in enumerate(gts) if i in indices]
     
-    
-    use_tricks = False
+
     # now 4DOR evaluation!
     OR_GT = []
     OR_PRED = []
@@ -98,14 +97,14 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                     all_pairs[k] = tmp
         gt_labels_sop = all_pairs
 
-        if use_tricks:
-            det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[6, 1, 9]])], dim=0)
-            det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 1, 9]])], dim=0)
-
-            det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 2, 13]])], dim=0)
-            det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 2, 13]])], dim=0)
-            det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 3, 13]])], dim=0)
-            det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 3, 13]])], dim=0)
+        # if args.use_tricks:
+        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[6, 1, 9]])], dim=0)
+        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 1, 9]])], dim=0)
+        #
+        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 2, 13]])], dim=0)
+        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 2, 13]])], dim=0)
+        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 3, 13]])], dim=0)
+        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 3, 13]])], dim=0)
         
         for index in range(gt_labels_sop.shape[0]):
             found = False
@@ -113,7 +112,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                 gt_pair_collection.append((gt_labels_sop[index][0], gt_labels_sop[index][1]))
                 or_gt_img.append(gt_labels_sop[index][2])
                 for idx in range(len(det_labels_sop_top)):
-                    if use_tricks:
+                    if args.use_tricks:
                         if det_labels_sop_top[idx][2] == 8 and (det_labels_sop_top[idx][0] != 5 or det_labels_sop_top[idx][1] != 1):
                             continue
                         if det_labels_sop_top[idx][2] == 9 and ((det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
