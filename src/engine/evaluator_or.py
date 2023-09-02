@@ -215,6 +215,26 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             sub = OBJECT_LABEL_MAP[int(inst[0])]
             obj = OBJECT_LABEL_MAP[int(inst[1])]
             verb = VERB_LABEL_MAP[int(inst[2])]
+            if args.use_tricks:
+                if inst[2] == 8 and (
+                        inst[0] != 5 or inst[1] != 1):
+                    continue
+                if inst[2] == 9 and (
+                        (inst[0] not in [6, 7]) or inst[1] != 1):
+                    continue
+                if ((inst[0] not in [6, 7]) or (inst[1] != 5)) and (
+                        inst[2] in [1, 2, 4, 5, 6, 11, 12]):
+                    continue
+                if ((inst[0] not in [6, 7, 8]) or (inst[1] != 4)) and (
+                        inst[2] == 7):
+                    continue
+                if ((inst[0] not in [6, 7, 8]) or (inst[1] != 5)) and (
+                        inst[2] == 10):
+                    continue
+                if ((inst[0] != 7) or (inst[1] != 6)) and (
+                        inst[2] == 0):
+                    continue
+
             if [sub, obj] not in sub_obj_pair_save and sub != obj:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
