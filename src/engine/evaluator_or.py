@@ -75,9 +75,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     _, indices = np.unique(img_ids, return_index=True)
     preds = [img_preds for i, img_preds in enumerate(preds) if i in indices]
     gts = [img_gts for i, img_gts in enumerate(gts) if i in indices]
-    
-    
-    use_tricks = False
+
     # now 4DOR evaluation!
     OR_GT = []
     OR_PRED = []
@@ -88,17 +86,18 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         gt_labels_sop = gts[iter]['gt_triplet']
         det_labels_sop_top = preds[iter]['triplet']
 
-        all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
-        all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14).to(all_pairs.device)], dim=1)
-        for k in range(all_pairs.shape[0]):
-            pair = all_pairs[k]
-            for m in range(gt_labels_sop.shape[0]):
-                tmp = gt_labels_sop[m]
-                if tmp[0] == pair[0] and tmp[1] == pair[1]:
-                    all_pairs[k] = tmp
-        gt_labels_sop = all_pairs
+        if args.add_none:
+            all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
+            all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14).to(all_pairs.device)], dim=1)
+            for k in range(all_pairs.shape[0]):
+                pair = all_pairs[k]
+                for m in range(gt_labels_sop.shape[0]):
+                    tmp = gt_labels_sop[m]
+                    if tmp[0] == pair[0] and tmp[1] == pair[1]:
+                        all_pairs[k] = tmp
+            gt_labels_sop = all_pairs
 
-        if use_tricks:
+        if args.use_tricks:
             det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[6, 1, 9]])], dim=0)
             det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 1, 9]])], dim=0)
 
@@ -113,7 +112,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                 gt_pair_collection.append((gt_labels_sop[index][0], gt_labels_sop[index][1]))
                 or_gt_img.append(gt_labels_sop[index][2])
                 for idx in range(len(det_labels_sop_top)):
-                    if use_tricks:
+                    if args.use_tricks:
                         if det_labels_sop_top[idx][2] == 8 and (det_labels_sop_top[idx][0] != 5 or det_labels_sop_top[idx][1] != 1):
                             continue
                         if det_labels_sop_top[idx][2] == 9 and ((det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
