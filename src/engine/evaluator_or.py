@@ -14,6 +14,36 @@ from src.data.evaluators.or_eval import OREvaluator
 from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
 import json
 
+OBJECT_LABEL_MAP = {
+    0: 'anesthesia_equipment',
+    1: 'operating_table',
+    2: 'instrument_table',
+    3: 'secondary_table',
+    4: 'instrument',
+    5: 'Patient',
+    6: 'human_0',
+    7: 'human_1',
+    8: 'human_2',
+    9: 'human_3',
+    10: 'human_4',
+}
+VERB_LABEL_MAP = {
+    0: "Assisting",
+    1: "Cementing",
+    2: "Cleaning",
+    3: "CloseTo",
+    4: "Cutting",
+    5: "Drilling",
+    6: "Hammering",
+    7: "Holding",
+    8: "LyingOn",
+    9: "Operating",
+    10: "Preparing",
+    11: "Sawing",
+    12: "Suturing",
+    13: "Touching",
+}
+
 @torch.no_grad()
 def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     model.eval()
@@ -25,6 +55,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     gts = []
     indices = []
     hoi_recognition_time = []
+    names = []
 
     for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
@@ -125,7 +156,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] != 5)) and (
                                 det_labels_sop_top[idx][2] == 10):
                             continue
-                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] not in [6, 7, 8])) and (
+                        if ((det_labels_sop_top[idx][0] != 7) or (det_labels_sop_top[idx][1] != 6)) and (
                                 det_labels_sop_top[idx][2] == 0):
                             continue
 
@@ -135,10 +166,6 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         break
                 if not found:
                     or_pred_img.append(torch.tensor(14))
-        # print("gt", gt_labels_sop)
-        # print("pred", det_labels_sop_top)
-        # print("or_gt_img", or_gt_img)
-        # print("or_pred_img", or_pred_img)
         OR_GT.extend(or_gt_img)
         OR_PRED.extend(or_pred_img)
         OR_GT = [inst.cpu() for inst in OR_GT]
@@ -147,45 +174,13 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                                        target_names=["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"], output_dict=True)
     print(cls_report)
 
-    # evaluator = OREvaluator(preds, gts)
-    #
-    # stats = evaluator.evaluate()
+    # if args.infer_val:
+    #     pass
 
     return
 
 
 def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
-    OBJECT_LABEL_MAP = {
-        0: 'anesthesia_equipment',
-        1: 'operating_table',
-        2: 'instrument_table',
-        3: 'secondary_table',
-        4: 'instrument',
-        5: 'Patient',
-        6: 'human_0',
-        7: 'human_1',
-        8: 'human_2',
-        9: 'human_3',
-        10: 'human_4',
-    }
-    VERB_LABEL_MAP = {
-        0: "Assisting",
-        1: "Cementing",
-        2: "Cleaning",
-        3: "CloseTo",
-        4: "Cutting",
-        5: "Drilling",
-        6: "Hammering",
-        7: "Holding",
-        8: "LyingOn",
-        9: "Operating",
-        10: "Preparing",
-        11: "Sawing",
-        12: "Suturing",
-        13: "Touching",
-    }
-
-
 
     model.eval()
 

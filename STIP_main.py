@@ -308,6 +308,7 @@ if __name__ == '__main__':
                         help='path')
     # for infer
     parser.add_argument('--infer', action='store_true', default=False)
+    parser.add_argument('--infer_val', action='store_true', default=False)
 
     args = parser.parse_args()
     args.STIP_relation_head = True
