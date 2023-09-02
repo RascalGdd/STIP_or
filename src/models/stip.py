@@ -218,7 +218,7 @@ class STIP(nn.Module):
                     sampled_rel_reps = self.coarse_relation_feature_extractor(sampled_rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid)
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
-                human_instance_ids = human_instance_ids_squeeze.unsqueeze(1)
+                human_instance_ids = human_instance_ids_squeeze.unsqueeze(1).type(torch.long)
                 rel_mat[human_instance_ids, :] += 1
                 rel_mat[:, human_instance_ids] += 1
                 rel_mat[rel_mat < 2] = 0
