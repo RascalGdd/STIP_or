@@ -215,7 +215,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             sub = OBJECT_LABEL_MAP[int(inst[0])]
             obj = OBJECT_LABEL_MAP[int(inst[1])]
             verb = VERB_LABEL_MAP[int(inst[2])]
-            if [sub, obj] not in sub_obj_pair_save:
+            if [sub, obj] not in sub_obj_pair_save and sub != obj:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
             else:
