@@ -176,7 +176,7 @@ class STIP(nn.Module):
             if self.training:
                 gt_ids = det2gt_indices[imgid][0].to(self.args.device)
                 human_instance_ids_squeeze = torch.cat([human_instance_ids_squeeze, gt_ids]).unique()
-                human_instance_ids = human_instance_ids_squeeze.unsqueeze(1)
+                human_instance_ids = human_instance_ids_squeeze.unsqueeze(1).type(torch.long)
                 rel_mat[human_instance_ids, :] += 1
                 rel_mat[:, human_instance_ids] += 1
                 rel_mat[rel_mat < 2] = 0
