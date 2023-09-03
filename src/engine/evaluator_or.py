@@ -145,19 +145,26 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                 or_gt_img.append(gt_labels_sop[index][2])
                 for idx in range(len(det_labels_sop_top)):
                     if args.use_tricks:
-                        if det_labels_sop_top[idx][2] == 8 and (det_labels_sop_top[idx][0] != 5 or det_labels_sop_top[idx][1] != 1):
+                        if det_labels_sop_top[idx][2] == 8 and (
+                                det_labels_sop_top[idx][0] != 5 or det_labels_sop_top[idx][1] != 1):
                             continue
-                        if det_labels_sop_top[idx][2] == 9 and ((det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
+                        if det_labels_sop_top[idx][2] == 9 and (
+                                (det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
                             continue
-                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (det_labels_sop_top[idx][1] != 5)) and (det_labels_sop_top[idx][2] in [1,2,4,5,6,11,12]):
+                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (det_labels_sop_top[idx][1] != 5)) and (
+                                det_labels_sop_top[idx][2] in [1, 2, 4, 5, 6, 11, 12]):
                             continue
-                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] != 4)) and (det_labels_sop_top[idx][2]==7):
-                            continue
-                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] != 5)) and (
-                                det_labels_sop_top[idx][2] == 10):
+                        if ((det_labels_sop_top[idx][0] not in [6, 7, 8]) or (det_labels_sop_top[idx][1] != 4)) and (
+                                det_labels_sop_top[idx][2] == 7):
                             continue
                         if ((det_labels_sop_top[idx][0] != 7) or (det_labels_sop_top[idx][1] != 6)) and (
                                 det_labels_sop_top[idx][2] == 0):
+                            continue
+                        if (not ((det_labels_sop_top[idx][0] == 6 and det_labels_sop_top[idx][1] == 5) or (det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 5))) and (
+                                det_labels_sop_top[idx][2] == 10):
+                            continue
+                        if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
+                                det_labels_sop_top[idx][2] == 13):
                             continue
 
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
@@ -228,11 +235,14 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if ((inst[0] not in [6, 7, 8]) or (inst[1] != 4)) and (
                         inst[2] == 7):
                     continue
-                if ((inst[0] not in [6, 7, 8]) or (inst[1] != 5)) and (
-                        inst[2] == 10):
-                    continue
                 if ((inst[0] != 7) or (inst[1] != 6)) and (
                         inst[2] == 0):
+                    continue
+                if (not ((inst[0] == 6 and inst[1] == 5) or (inst[0] == 7 and inst[1] == 5))) and (
+                        inst[2] == 10):
+                    continue
+                if (not ((inst[0] == 7 and inst[1] == 2) or (inst[0] == 8 and inst[1] == 3))) and (
+                        inst[2] == 13):
                     continue
 
             if [sub, obj] not in sub_obj_pair_save and sub != obj:
