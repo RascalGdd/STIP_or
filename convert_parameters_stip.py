@@ -26,7 +26,7 @@ def get_args():
 
 
 def main(args):
-    ps = torch.load(args.load_path)
+    ps = torch.load(r"D:\DD\STIP_or\params\detr-r101-origin.pth")
 
     # obj_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
     #            14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -46,11 +46,7 @@ def main(args):
     obj_ids.append(11)
 
     for k in list(ps['model'].keys()):
-        # if len(k.split('.')) > 1 and k.split('.')[1] == 'decoder':
-        if "bbox_embed" in k or "class_embed" in k:
-            print(k)
-            # ps['model'][k.replace('decoder', 'instance_decoder')] = ps['model'][k].clone()
-            # ps['model'][k.replace('decoder', 'interaction_decoder')] = ps['model'][k].clone()
+        if "bbox_embed" in k or "class_embed" in k or "query_embed" in k:
             del ps['model'][k]
 
 
@@ -72,9 +68,9 @@ def main(args):
     # ps['model']['obj_class_embed.weight'] = ps['model']['class_embed.weight'].clone()[obj_ids]
     # ps['model']['obj_class_embed.bias'] = ps['model']['class_embed.bias'].clone()[obj_ids]
 
-    ps['model']['query_embed.weight'] = ps['model']['query_embed.weight'].clone()[:args.num_queries]
+    # ps['model']['query_embed.weight'] = ps['model']['query_embed.weight'].clone()[:args.num_queries]
 
-    torch.save(ps, args.save_path)
+    torch.save(ps, r"D:\DD\STIP_or\params\detr-r101-pre-4dor-stip-noquery.pth")
 
 
 if __name__ == '__main__':

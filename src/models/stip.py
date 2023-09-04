@@ -130,6 +130,7 @@ class STIP(nn.Module):
         memory_input, memory_input_mask = features[0].decompose()
         memory_input_multiview, memory_input_mask_multiview = features_multiview[0].decompose()
         memory_pos = pos[0]
+        memory_pos_multiview = pos_multiview[0]
         if self.args.relation_feature_map_from == 'backbone':
             relation_feature_map = features[0]
             relation_feature_map_multiview = features_multiview[0]
@@ -140,6 +141,7 @@ class STIP(nn.Module):
 
         if not self.args.no_interaction_decoder:
             memory_input = self.memory_input_proj(memory_input)
+            memory_input_multiview = self.memory_input_proj(memory_input_multiview)
 
         for imgid in range(bs):
             # >>>>>>>>>>>> relation proposal <<<<<<<<<<<<<<<
@@ -263,15 +265,41 @@ class STIP(nn.Module):
                         torch.cat([memory_input[imgid:imgid+1].permute(0,2,3,1).expand(*layout_encodings.shape), layout_encodings], dim=-1)
                     ).flatten(start_dim=1, end_dim=2).unsqueeze(2) # (#query, #memory, batch size, dim)
 
-                outs = self.interaction_decoder(tgt=query_reps,
-                                                tgt_mask=tgt_mask,
-                                                query_pos=query_pos_encoding,
-                                                query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
-                                                memory=memory_input[imgid:imgid+1].flatten(2).permute(2,0,1),
-                                                memory_key_padding_mask=memory_input_mask[imgid:imgid+1].flatten(1),
-                                                memory_mask=memory_union_mask,
-                                                pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
-                                                memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
+                if not self.args.use_multiviewfusion_last:
+                    outs = self.interaction_decoder(tgt=query_reps,
+                                                    tgt_mask=tgt_mask,
+                                                    query_pos=query_pos_encoding,
+                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
+                                                    memory=memory_input[imgid:imgid+1].flatten(2).permute(2,0,1),
+                                                    memory_key_padding_mask=memory_input_mask[imgid:imgid+1].flatten(1),
+                                                    memory_mask=memory_union_mask,
+                                                    pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
+                                                    memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
+                else:
+                    memory_input = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                              memory_input_multiview[imgid * 3:imgid * 3 + 3].flatten(2).permute(0, 2,
+                                                                                                                 1).flatten(
+                                                  0, 1).unsqueeze(1)], dim=0)
+                    memory_input_mask = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
+                                                   memory_input_mask_multiview[imgid * 3:imgid * 3 + 3].flatten(
+                                                       1).flatten(0).unsqueeze(0)], dim=1)
+                    memory_pos = torch.cat([memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                            memory_pos_multiview[imgid * 3:imgid * 3 + 3].flatten(2).permute(0, 2,
+                                                                                                             1).flatten(
+                                                0, 1).unsqueeze(1)], dim=0)
+                    layout_encodings = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*3, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
+
+                    outs = self.interaction_decoder(tgt=query_reps,
+                                                    tgt_mask=tgt_mask,
+                                                    query_pos=query_pos_encoding,
+                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
+                                                    memory=memory_input,
+                                                    memory_key_padding_mask=memory_input_mask,
+                                                    memory_mask=memory_union_mask,
+                                                    pos=memory_pos,
+                                                    memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
+
+
             action_logits = self.action_embed(outs)
 
             pred_rel_pairs.append(sampled_rel_pairs)
