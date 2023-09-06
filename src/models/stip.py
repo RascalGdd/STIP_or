@@ -44,6 +44,9 @@ class STIP(nn.Module):
             make_fc(rel_rep_dim // 2, 1)
         )
 
+        if self.args.backbone == "resnet34":
+            self.backbone_channel_adapt = make_fc(512, 2048)
+
         # relation classification
         if self.args.use_simple_pointsfusion and self.args.use_pointsfusion:
             self.pointsfeats_proj = make_fc(291, rel_rep_dim)
@@ -140,6 +143,10 @@ class STIP(nn.Module):
             memory_input = detr_encoder_outs
 
         if not self.args.no_interaction_decoder:
+            if self.args.backbone == "resnet34":
+                memory_input = self.backbone_channel_adapt(memory_input.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                memory_input_multiview = self.backbone_channel_adapt(
+                    memory_input_multiview.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
             memory_input = self.memory_input_proj(memory_input)
             memory_input_multiview = self.memory_input_proj(memory_input_multiview)
 
