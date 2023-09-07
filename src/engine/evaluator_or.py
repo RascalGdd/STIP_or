@@ -128,15 +128,6 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                     if tmp[0] == pair[0] and tmp[1] == pair[1]:
                         all_pairs[k] = tmp
             gt_labels_sop = all_pairs
-
-        # if args.use_tricks:
-        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[6, 1, 9]])], dim=0)
-        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 1, 9]])], dim=0)
-        #
-        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 2, 13]])], dim=0)
-        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 2, 13]])], dim=0)
-        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[8, 3, 13]])], dim=0)
-        #     det_labels_sop_top = torch.cat([det_labels_sop_top, torch.tensor([[7, 3, 13]])], dim=0)
         
         for index in range(gt_labels_sop.shape[0]):
             found = False
@@ -166,6 +157,32 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
                                 det_labels_sop_top[idx][2] == 13):
                             continue
+                    elif args.use_tricks_val:
+                        if det_labels_sop_top[idx][2] in [1, 4, 5, 6, 11, 12] and (
+                                det_labels_sop_top[idx][0] != 6 or det_labels_sop_top[idx][1] != 5):
+                            continue
+                        if det_labels_sop_top[idx][2] == 8 and (
+                                det_labels_sop_top[idx][0] != 5 or det_labels_sop_top[idx][1] != 1):
+                            continue
+                        if det_labels_sop_top[idx][2] == 9 and (
+                                (det_labels_sop_top[idx][0] not in [6, 7]) or det_labels_sop_top[idx][1] != 1):
+                            continue
+                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (det_labels_sop_top[idx][1] != 5)) and (
+                                det_labels_sop_top[idx][2] in [2, 10]):
+                            continue
+                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (det_labels_sop_top[idx][1] != 4)) and (
+                                det_labels_sop_top[idx][2] == 7):
+                            continue
+                        if ((det_labels_sop_top[idx][0] != 7) or (det_labels_sop_top[idx][1] != 6)) and (
+                                det_labels_sop_top[idx][2] == 0):
+                            continue
+                        if ((det_labels_sop_top[idx][0] not in [6,7,8]) or (det_labels_sop_top[idx][1] not in [2,3,5])) and (
+                                det_labels_sop_top[idx][2] == 13):
+                            continue
+                        if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8]) and (
+                                det_labels_sop_top[idx][2] != 3):
+                            continue
+
 
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])

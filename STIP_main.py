@@ -290,6 +290,7 @@ if __name__ == '__main__':
     # prior embedding
     parser.add_argument('--use_prior', action='store_true', default=False)
     parser.add_argument('--use_tricks', action='store_true', default=False)
+    parser.add_argument('--use_tricks_val', action='store_true', default=False)
     parser.add_argument('--add_none', action='store_true', default=False)
 
     # not sensitive or effective
