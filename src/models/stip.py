@@ -780,7 +780,8 @@ class STIPPostProcess(nn.Module):
                 ob = box[o_idx, :]
                 b = torch.cat((sb, ob))
 
-                vs = vs * vs * os.unsqueeze(1) * ss.unsqueeze(1)
+                # vs = vs * vs * os.unsqueeze(1) * ss.unsqueeze(1)
+                vs = vs
                 ids = torch.arange(b.shape[0])
 
                 ts = [vs[a][vl[a]] for a in range(len(vs))]
