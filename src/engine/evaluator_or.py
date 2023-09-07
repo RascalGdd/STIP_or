@@ -96,8 +96,8 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         # For avoiding a runtime error, the copy is used
         gts.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(targets)))))
 
-        if len(gts) >= 2:
-            break
+        # if len(gts) >= 2:
+        #     break
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
