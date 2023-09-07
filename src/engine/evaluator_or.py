@@ -96,8 +96,8 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         # For avoiding a runtime error, the copy is used
         gts.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(targets)))))
 
-        # if len(gts) >= 2:
-        #     break
+        if len(gts) >= 2:
+            break
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -181,9 +181,9 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
                                 det_labels_sop_top[idx][2] == 13):
                             continue
-                        # if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8, 9]) and (
-                        #         det_labels_sop_top[idx][2] != 3):
-                        #     continue
+                        if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8, 9]) and (
+                                det_labels_sop_top[idx][2] != 3):
+                            continue
 
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])

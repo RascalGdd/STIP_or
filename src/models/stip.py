@@ -771,19 +771,16 @@ class STIPPostProcess(nn.Module):
 
             # accumulate results (iterate through interaction queries)
             results = []
-            for batch_idx, (os, sl, ol, vs, box, h_idx, o_idx, vl) in enumerate(zip(obj_scores, sub_labels, obj_labels, verb_scores, boxes, h_indices, o_indices, verb_labels)):
+            for batch_idx, (os, sl, ol, vs, box, h_idx, o_idx, vl, ss) in enumerate(zip(obj_scores, sub_labels, obj_labels, verb_scores, boxes, h_indices, o_indices, verb_labels, sub_scores)):
                 # label
                 # sl = torch.full_like(ol, 0) # self.subject_category_id = 0 in HICO-DET
-
-
-
                 l = torch.cat((sl, ol))
                 # boxes
                 sb = box[h_idx, :]
                 ob = box[o_idx, :]
                 b = torch.cat((sb, ob))
 
-                vs = vs * os.unsqueeze(1)
+                vs = vs * os.unsqueeze(1) * ss.unsqueeze(1)
                 ids = torch.arange(b.shape[0])
 
                 ts = [vs[a][vl[a]] for a in range(len(vs))]
@@ -805,8 +802,10 @@ class STIPPostProcess(nn.Module):
                 ranked_orders = [int(k) for k in ranked_orders]
                 triplet = torch.tensor(triplet)
                 triplet = triplet[ranked_orders, :]
+                total_scores = total_scores[ranked_orders]
 
                 res_dict["triplet"] = triplet
+                res_dict["ranked_scores"] = total_scores
                 results.append(res_dict)
 
         return results
