@@ -102,9 +102,9 @@ class STIP(nn.Module):
             point_features = None
 
         if self.args.backbone == "resnet34":
-            src = self.backbone_channel_adapt(src.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            src = self.backbone_channel_adapt(src.permute(0, 2, 3, 1).contiguous()).permute(0, 3, 1, 2).contiguous()
             src_multiview = self.backbone_channel_adapt(
-                src_multiview.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                src_multiview.permute(0, 2, 3, 1).contiguous()).permute(0, 3, 1, 2).contiguous()
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
         hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
@@ -149,9 +149,9 @@ class STIP(nn.Module):
 
         if not self.args.no_interaction_decoder:
             if self.args.backbone == "resnet34":
-                memory_input = self.backbone_channel_adapt(memory_input.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                memory_input = self.backbone_channel_adapt(memory_input.permute(0, 2, 3, 1).contiguous()).permute(0, 3, 1, 2).contiguous()
                 memory_input_multiview = self.backbone_channel_adapt(
-                    memory_input_multiview.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                    memory_input_multiview.permute(0, 2, 3, 1).contiguous()).permute(0, 3, 1, 2).contiguous()
             memory_input = self.memory_input_proj(memory_input)
             memory_input_multiview = self.memory_input_proj(memory_input_multiview)
 
