@@ -158,6 +158,8 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                                 det_labels_sop_top[idx][2] == 13):
                             continue
                     elif args.use_tricks_val:
+                        if det_labels_sop_top[idx][0] == det_labels_sop_top[idx][1]:
+                            continue
                         if det_labels_sop_top[idx][2] in [1, 4, 5, 6, 11, 12] and (
                                 det_labels_sop_top[idx][0] != 6 or det_labels_sop_top[idx][1] != 5):
                             continue
@@ -179,10 +181,9 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
                                 det_labels_sop_top[idx][2] == 13):
                             continue
-                        if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8, 9]) and (
-                                det_labels_sop_top[idx][2] != 3):
-                            continue
-
+                        # if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8, 9]) and (
+                        #         det_labels_sop_top[idx][2] != 3):
+                        #     continue
 
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])
@@ -191,8 +192,27 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                 if not found:
                     or_pred_img.append(torch.tensor(14))
         OR_GT.extend(or_gt_img)
+#       Assisting filter
+        if args.use_tricks_val:
+            for m, k in enumerate(or_pred_img):
+                if k == 0:
+                    hold = False
+                    rest = True
+                    sub = gt_labels_sop[m][1]
+                    for o, p in enumerate(or_pred_img):
+                        if p == 7 and gt_labels_sop[o][0] == sub:
+                            hold = True
+                            break
+                    for o, p in enumerate(or_pred_img):
+                        if p not in [3, 8]:
+                            rest = False
+                            break
+                    if (not rest) and (not hold):
+                        or_pred_img[m] = torch.tensor(14)
+
         OR_PRED.extend(or_pred_img)
-        OR_GT = [inst.cpu() for inst in OR_GT]
+        OR_PRED = [inst.cuda() for inst in OR_PRED]
+        # OR_GT = [inst.cpu() for inst in OR_GT]
 
     cls_report = classification_report(OR_GT, OR_PRED,
                                        target_names=["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"], output_dict=True)
