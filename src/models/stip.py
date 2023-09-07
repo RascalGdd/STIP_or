@@ -101,6 +101,11 @@ class STIP(nn.Module):
         else:
             point_features = None
 
+        if self.args.backbone == "resnet34":
+            src = self.backbone_channel_adapt(src.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            src_multiview = self.backbone_channel_adapt(
+                src_multiview.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
         hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         inst_repr = hs[-1]
