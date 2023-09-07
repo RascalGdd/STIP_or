@@ -199,10 +199,10 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
 #       Assisting filter
         if args.use_tricks_val:
             for m, k in enumerate(or_pred_img):
-                if k == 3 and scores_matched[m] < 0.1:
+                if k == 3 and scores_matched[m] < 0.08:
                     or_pred_img[m] = torch.tensor(14)
                 if k == 0:
-                    if scores_matched[m] < 0.1:
+                    if scores_matched[m] < 0.08:
                         or_pred_img[m] = torch.tensor(14)
                     else:
                         hold = False
@@ -212,11 +212,11 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                             if p == 7 and gt_labels_sop[o][0] == sub:
                                 hold = True
                                 break
-                        for o, p in enumerate(or_pred_img):
-                            if p not in [3, 8]:
-                                rest = False
-                                break
-                        if (not hold) and (not rest):
+                        # for o, p in enumerate(or_pred_img):
+                        #     if p not in [3, 8]:
+                        #         rest = False
+                        #         break
+                        if not hold:
                             or_pred_img[m] = torch.tensor(14)
 
         OR_PRED.extend(or_pred_img)
