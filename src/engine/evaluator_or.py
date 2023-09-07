@@ -117,6 +117,8 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         gt_pair_collection = []
         gt_labels_sop = gts[iter]['gt_triplet']
         det_labels_sop_top = preds[iter]['triplet']
+        det_scores = preds[iter]['ranked_scores']
+        scores_matched = []
 
         if args.add_none:
             all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
@@ -187,14 +189,18 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
 
                     if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])
+                        scores_matched.append(det_scores[idx])
                         found = True
                         break
                 if not found:
                     or_pred_img.append(torch.tensor(14))
+                    scores_matched.append(torch.tensor(0))
         OR_GT.extend(or_gt_img)
 #       Assisting filter
         if args.use_tricks_val:
             for m, k in enumerate(or_pred_img):
+                if k == 3 and scores_matched[m] < 0.1:
+                    or_pred_img[m] = torch.tensor(14)
                 if k == 0:
                     hold = False
                     rest = True
