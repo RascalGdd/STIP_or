@@ -176,10 +176,10 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         if ((det_labels_sop_top[idx][0] != 7) or (det_labels_sop_top[idx][1] != 6)) and (
                                 det_labels_sop_top[idx][2] == 0):
                             continue
-                        if ((det_labels_sop_top[idx][0] not in [6,7,8]) or (det_labels_sop_top[idx][1] not in [2,3,5])) and (
+                        if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
                                 det_labels_sop_top[idx][2] == 13):
                             continue
-                        if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8]) and (
+                        if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8, 9]) and (
                                 det_labels_sop_top[idx][2] != 3):
                             continue
 
