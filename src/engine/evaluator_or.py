@@ -202,19 +202,22 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                 if k == 3 and scores_matched[m] < 0.1:
                     or_pred_img[m] = torch.tensor(14)
                 if k == 0:
-                    hold = False
-                    rest = True
-                    sub = gt_labels_sop[m][1]
-                    for o, p in enumerate(or_pred_img):
-                        if p == 7 and gt_labels_sop[o][0] == sub:
-                            hold = True
-                            break
-                    # for o, p in enumerate(or_pred_img):
-                    #     if p not in [3, 8]:
-                    #         rest = False
-                    #         break
-                    if not hold:
+                    if scores_matched[m] < 0.1:
                         or_pred_img[m] = torch.tensor(14)
+                    else:
+                        hold = False
+                        rest = True
+                        sub = gt_labels_sop[m][1]
+                        for o, p in enumerate(or_pred_img):
+                            if p == 7 and gt_labels_sop[o][0] == sub:
+                                hold = True
+                                break
+                        # for o, p in enumerate(or_pred_img):
+                        #     if p not in [3, 8]:
+                        #         rest = False
+                        #         break
+                        if not hold:
+                            or_pred_img[m] = torch.tensor(14)
 
         OR_PRED.extend(or_pred_img)
         OR_GT = [inst.cpu() for inst in OR_GT]
