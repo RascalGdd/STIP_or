@@ -212,11 +212,11 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                             if p == 7 and gt_labels_sop[o][0] == sub:
                                 hold = True
                                 break
-                        # for o, p in enumerate(or_pred_img):
-                        #     if p not in [3, 8]:
-                        #         rest = False
-                        #         break
-                        if not hold:
+                        for o, p in enumerate(or_pred_img):
+                            if p not in [3, 8]:
+                                rest = False
+                                break
+                        if (not hold) and (not rest):
                             or_pred_img[m] = torch.tensor(14)
 
         OR_PRED.extend(or_pred_img)
