@@ -257,6 +257,8 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         # For avoiding a runtime error, the copy is used
         names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
 
+        # if len(names)>=2:
+        #     break
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -327,6 +329,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
         final_dict[name] = relations
     output_name = args.infer_name
+    print(final_dict)
     with open(output_name, 'w') as f:
         json.dump(final_dict, f)
 
