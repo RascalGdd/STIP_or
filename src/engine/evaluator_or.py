@@ -265,12 +265,36 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         relations = []
         name = names[idx].split("cam_")[0]+"2"
         sub_obj_pair_save = []
+        scores = preds[idx]['ranked_scores']
+        scores_matched = []
         for index in range(preds[idx]["triplet"].shape[0]):
             inst = preds[idx]["triplet"][index]
             sub = OBJECT_LABEL_MAP[int(inst[0])]
             obj = OBJECT_LABEL_MAP[int(inst[1])]
             verb = VERB_LABEL_MAP[int(inst[2])]
-            if args.use_tricks:
+            if args.use_tricks_val:
+                if inst[2] == 3 and scores[index] < 0.08:
+                    continue
+                if inst[2] == 0:
+                    if scores[index] < 0.08:
+                        continue
+                    else:
+                        hold = False
+                        rest = True
+                        sub = inst[1]
+                        for o in range(preds[idx]["triplet"].shape[0]):
+                            inst2 = preds[idx]["triplet"][o]
+                            if inst2[2] == 7 and inst2[0] == sub:
+                                hold = True
+                                break
+                        if not hold:
+                            continue
+
+                if inst[0] == inst[1]:
+                    continue
+                if inst[2] in [1, 4, 5, 6, 11, 12] and (
+                        inst[0] != 6 or inst[1] != 5):
+                    continue
                 if inst[2] == 8 and (
                         inst[0] != 5 or inst[1] != 1):
                     continue
@@ -278,28 +302,31 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                         (inst[0] not in [6, 7]) or inst[1] != 1):
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] != 5)) and (
-                        inst[2] in [1, 2, 4, 5, 6, 11, 12]):
+                        inst[2] in [2, 10]):
                     continue
-                if ((inst[0] not in [6, 7, 8]) or (inst[1] != 4)) and (
+                if ((inst[0] not in [6, 7]) or (inst[1] != 4)) and (
                         inst[2] == 7):
                     continue
-                if ((inst[0] != 7) or (inst[1] != 6)) and (
+                if ((inst[0] not in [6, 7]) or (inst[1] not in [6, 7])) and (
                         inst[2] == 0):
                     continue
-                if (not ((inst[0] == 6 and inst[1] == 5) or (inst[0] == 7 and inst[1] == 5))) and (
-                        inst[2] == 10):
-                    continue
-                if (not ((inst[0] == 7 and inst[1] == 2) or (inst[0] == 8 and inst[1] == 3))) and (
+                if (not ((inst[0] == 7 and inst[1] == 2) or (
+                        inst[0] == 8 and inst[1] == 3))) and (
                         inst[2] == 13):
+                    continue
+                if (inst[0] not in [5, 6, 7, 8, 9]) and (
+                        inst[2] != 3):
                     continue
 
             if [sub, obj] not in sub_obj_pair_save and sub != obj:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
+                scores_matched.append(scores[index])
             else:
                 pass
+
         final_dict[name] = relations
-    output_name = f'or_infer.json'
+    output_name = args.infer_name
     with open(output_name, 'w') as f:
         json.dump(final_dict, f)
 
