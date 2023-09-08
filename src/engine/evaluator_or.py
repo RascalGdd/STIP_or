@@ -283,10 +283,10 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                     else:
                         hold = False
                         rest = True
-                        sub = inst[1]
+                        sub2 = inst[1]
                         for o in range(preds[idx]["triplet"].shape[0]):
                             inst2 = preds[idx]["triplet"][o]
-                            if inst2[2] == 7 and inst2[0] == sub:
+                            if inst2[2] == 7 and inst2[0] == sub2:
                                 hold = True
                                 break
                         if not hold:
