@@ -294,8 +294,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
                 if inst[0] == inst[1]:
                     continue
-                if inst[2] in [1, 4, 5, 6, 11, 12] and (
-                        inst[0] != 6 or inst[1] != 5):
+                if inst[2] in [1, 4, 5, 6, 11, 12] and inst[1] != 5:
                     continue
                 if inst[2] == 8 and (
                         inst[0] != 5 or inst[1] != 1):
