@@ -295,7 +295,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if inst[0] == inst[1]:
                     continue
                 if inst[2] in [1, 4, 5, 6, 11, 12] and (
-                        inst[0] != 6 or inst[1] != 5):
+                        inst[0] not in [6, 7] or inst[1] != 5):
                     continue
                 if inst[2] == 8 and (
                         inst[0] != 5 or inst[1] != 1):
@@ -312,15 +312,15 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if ((inst[0] not in [6, 7]) or (inst[1] not in [6, 7])) and (
                         inst[2] == 0):
                     continue
-                if (not ((inst[0] == 7 and inst[1] == 2) or (
-                        inst[0] == 8 and inst[1] == 3))) and (
-                        inst[2] == 13):
-                    continue
+                # if (not ((inst[0] == 7 and inst[1] == 2) or (
+                #         inst[0] == 8 and inst[1] == 3))) and (
+                #         inst[2] == 13):
+                #     continue
                 if (inst[0] not in [5, 6, 7, 8, 9]) and (
                         inst[2] != 3):
                     continue
 
-            if [sub, obj] not in sub_obj_pair_save and sub != obj:
+            if [sub, obj] not in sub_obj_pair_save:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
                 scores_matched.append(scores[index])
