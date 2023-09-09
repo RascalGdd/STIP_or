@@ -263,9 +263,11 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     final_dict = {}
+    final_dict2 = {}
     for idx in range(len(names)):
         relations = []
         name = names[idx].split("cam_")[0]+"2"
+        name2 = names[idx].split("cam_")[0] + "1"
         sub_obj_pair_save = []
         scores = preds[idx]['ranked_scores']
         scores_matched = []
@@ -294,7 +296,8 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
                 if inst[0] == inst[1]:
                     continue
-                if inst[2] in [1, 4, 5, 6, 11, 12] and inst[1] != 5:
+                if inst[2] in [1, 4, 5, 6, 11, 12] and (
+                        inst[0] != 6 or inst[1] != 5):
                     continue
                 if inst[2] == 8 and (
                         inst[0] != 5 or inst[1] != 1):
@@ -319,7 +322,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                         inst[2] != 3):
                     continue
 
-            if [sub, obj] not in sub_obj_pair_save:
+            if [sub, obj] not in sub_obj_pair_save and sub != obj:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
                 scores_matched.append(scores[index])
@@ -327,10 +330,13 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 pass
 
         final_dict[name] = relations
+        final_dict2[name2] = relations
     output_name = args.infer_name
-    print(final_dict)
+    output_name2 = "backup.json"
     with open(output_name, 'w') as f:
         json.dump(final_dict, f)
+    with open(output_name2, 'w') as f:
+        json.dump(final_dict2, f)
 
     return
 
