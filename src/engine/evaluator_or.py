@@ -43,7 +43,23 @@ VERB_LABEL_MAP = {
     12: "Suturing",
     13: "Touching",
 }
-
+VERB_LABEL_MAP_None = {
+    0: "Assisting",
+    1: "Cementing",
+    2: "Cleaning",
+    3: "CloseTo",
+    4: "Cutting",
+    5: "Drilling",
+    6: "Hammering",
+    7: "Holding",
+    8: "LyingOn",
+    9: "Operating",
+    10: "Preparing",
+    11: "Sawing",
+    12: "Suturing",
+    13: "Touching",
+    14: "None"
+}
 @torch.no_grad()
 def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     model.eval()
@@ -111,6 +127,8 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     # now 4DOR evaluation!
     OR_GT = []
     OR_PRED = []
+    eval_dict = {}
+    eval_dict_gt = {}
     for iter in range(len(gts)):
         or_gt_img = []
         or_pred_img = []
@@ -118,6 +136,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         gt_labels_sop = gts[iter]['gt_triplet']
         det_labels_sop_top = preds[iter]['triplet']
         det_scores = preds[iter]['ranked_scores']
+        name = gts[iter]['image_id']
         scores_matched = []
 
         if args.add_none:
@@ -221,10 +240,15 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         #         break
                         if not hold:
                             or_pred_img[m] = torch.tensor(14)
-
+        eval_dict[int(name)] = [VERB_LABEL_MAP_None[int(j)] for j in or_pred_img]
+        eval_dict_gt[int(name)] = [VERB_LABEL_MAP_None[int(m)] for m in or_gt_img]
         OR_PRED.extend(or_pred_img)
         OR_GT = [inst.cpu() for inst in OR_GT]
 
+    with open("eval_dict.json", 'w') as f:
+        json.dump(eval_dict, f)
+    with open("eval_dict_gt.json", 'w') as f:
+        json.dump(eval_dict_gt, f)
     cls_report = classification_report(OR_GT, OR_PRED,
                                        target_names=["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"], output_dict=True)
     print(cls_report)
