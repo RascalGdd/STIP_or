@@ -287,7 +287,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         #     break
 
     # gather the stats from all processes
-    # metric_logger.synchronize_between_processes()
+    metric_logger.synchronize_between_processes()
     final_dict = {}
     final_dict2 = {}
     for idx in range(len(names)):
