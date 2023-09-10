@@ -263,32 +263,32 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
     model.eval()
 
-    # metric_logger = loggers.MetricLogger(mode="test", delimiter="  ")
+    metric_logger = loggers.MetricLogger(mode="test", delimiter="  ")
     header = 'Evaluation Inference (HICO-DET)'
 
     preds = []
     names = []
 
-    # for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
-    for samples, name, multiview_samples, points in data_loader:
+    for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+    # for samples, name, multiview_samples, points in data_loader:
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 
-        # outputs = model(samples, multiview_samples=multiview_samples, points=points)
-        # results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
-        outputs = model(samples, None, multiview_samples, points)
-        # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
+        outputs = model(samples, multiview_samples=multiview_samples, points=points)
         results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
+        # outputs = model(samples, None, multiview_samples, points)
+        # # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
+        # results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
 
 
 
 
-        # preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
-        # # For avoiding a runtime error, the copy is used
-        # names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
-        preds.extend(results)
-        names.extend(name)
+        preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
+        # For avoiding a runtime error, the copy is used
+        names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
+        # preds.extend(results)
+        # names.extend(name)
 
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         # print(name)
@@ -299,11 +299,11 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         # print("scores::", results[0]['ranked_scores'])
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
-        if len(names) >= 20:
-            break
+        # if len(names) >= 20:
+        #     break
 
     # gather the stats from all processes
-    # metric_logger.synchronize_between_processes()
+    metric_logger.synchronize_between_processes()
     final_dict = {}
     final_dict2 = {}
     for idx in range(len(names)):
