@@ -292,8 +292,11 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         print(name)
-        print("triplet:", results[0]['triplet'])
-        print("scores:", results[0]['ranked_scores'])
+        print("samples:", samples)
+        print("multiview_samples:", multiview_samples)
+        print("points:", points)
+        print("outputs:", outputs)
+        print("scores::", results[0]['ranked_scores'])
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         if len(names) >= 20:
