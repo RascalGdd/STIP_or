@@ -340,7 +340,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
                 if inst[0] == inst[1]:
                     continue
-                if inst[2] in [1, 4, 5, 6, 11, 12] and (
+                if inst[2] in [1, 5, 6, 11, 12, 2, 10] and (
                         inst[0] != 6 or inst[1] != 5):
                     continue
                 if inst[2] == 8 and (
@@ -350,7 +350,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                         (inst[0] not in [6, 7]) or inst[1] != 1):
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] != 5)) and (
-                        inst[2] in [2, 10]):
+                        inst[2] == 4):
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] != 4)) and (
                         inst[2] == 7):
