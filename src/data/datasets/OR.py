@@ -39,16 +39,17 @@ class CocoDetection_infer(Dataset):
         self.img_folder = os.path.join(infer_folder, "images_infer")
         self.pcd_folder = os.path.join(infer_folder, "points_infer")
         total_list = os.listdir(self.img_folder)
+        total_list.sort()
         self.multiview_list = []
         self.views = [2, 3, 6]
         self.img_list = [inst for inst in total_list if "cam_1" in inst]
         for k in self.img_list:
             self.multiview_list.append([inst for inst in total_list if (k.split("_cam")[0] in inst and "cam_1" not in inst and int(inst.split("_")[-1].split(".")[0]) in self.views)])
-        # self.img_list.sort()
-        # self.multiview_list.sort()
-        print(self.img_list)
-        print(self.multiview_list)
-
+        self.img_list.sort()
+        self.multiview_list.sort()
+        print("total list", total_list)
+        print("img list", self.img_list)
+        print("view list", self.multiview_list)
 
     def __getitem__(self, idx):
         image_id = self.img_list[idx]
