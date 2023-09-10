@@ -290,6 +290,12 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         preds.extend(results)
         names.extend(name)
 
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        print(name)
+        print("triplet:", results[0]['triplet'])
+        print("scores:", results[0]['ranked_scores'])
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+
         if len(names) >= 20:
             break
 
