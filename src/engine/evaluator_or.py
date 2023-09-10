@@ -274,8 +274,14 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 
-        outputs = model(samples, multiview_samples=multiview_samples, points=points)
+        # outputs = model(samples, multiview_samples=multiview_samples, points=points)
+        # results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
+        outputs = model(samples, None, multiview_samples, points)
+        # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
+
+
+
 
         # preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
         # # For avoiding a runtime error, the copy is used
