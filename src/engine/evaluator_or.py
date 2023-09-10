@@ -324,7 +324,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if inst[2] == 7 and scores[index] < 0.07:
                     continue
                 if inst[2] == 0:
-                    if scores[index] < 0.06:
+                    if scores[index] < 0.09:
                         continue
                     else:
                         hold = False
