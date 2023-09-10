@@ -269,12 +269,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     preds = []
     names = []
 
-    for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
-        # if "000365" not in name[0]:
-        #     continue
-        # samples, name, multiview_samples, points = data_loader.dataset[365]
-
-##   dataloader.dataset[sample_idx]
+    for samples, name, multiview_samples, points in data_loader:
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
@@ -282,15 +277,17 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         outputs = model(samples, multiview_samples=multiview_samples, points=points)
         results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
 
-        preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
-        # For avoiding a runtime error, the copy is used
-        names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
+        # preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
+        # # For avoiding a runtime error, the copy is used
+        # names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
+        preds.extend(results)
+        names.extend(name)
 
         # if len(names)>=2:
         #     break
 
     # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
+    # metric_logger.synchronize_between_processes()
     final_dict = {}
     final_dict2 = {}
     for idx in range(len(names)):
