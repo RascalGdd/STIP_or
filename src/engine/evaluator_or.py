@@ -269,7 +269,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     preds = []
     names = []
 
-    for samples, name, multiview_samples, points in data_loader:
+    for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
