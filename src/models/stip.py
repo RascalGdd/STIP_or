@@ -655,8 +655,9 @@ class STIPPostProcess(nn.Module):
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
 
         if target_sizes is None:
-            target_sizes = torch.zeros([len(out_logits), 2]).to(out_logits.device)
+            target_sizes = torch.zeros([len(out_logits), 2]).to(out_logits.device).type(torch.long)
             target_sizes[:, 0], target_sizes[:, 1] = 1536, 2048
+            # target_sizes = torch.tensor([[1536, 2048]]).type(torch.long).to(out_logits.device)
 
         assert len(out_logits) == len(target_sizes)
         assert target_sizes.shape[1] == 2

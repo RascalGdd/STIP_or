@@ -270,6 +270,11 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     names = []
 
     for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+        # if "000365" not in name[0]:
+        #     continue
+        # samples, name, multiview_samples, points = data_loader.dataset[365]
+
+##   dataloader.dataset[sample_idx]
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
