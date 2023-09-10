@@ -277,17 +277,17 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         outputs = model(samples, multiview_samples=multiview_samples, points=points)
         results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
 
-        # preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
-        # # For avoiding a runtime error, the copy is used
-        # names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
-        preds.extend(results)
-        names.extend(name)
+        preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
+        # For avoiding a runtime error, the copy is used
+        names.extend(list(itertools.chain.from_iterable(utils.all_gather(copy.deepcopy(name)))))
+        # preds.extend(results)
+        # names.extend(name)
 
         # if len(names)>=2:
         #     break
 
     # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
+    # metric_logger.synchronize_between_processes()
     final_dict = {}
     final_dict2 = {}
     for idx in range(len(names)):
