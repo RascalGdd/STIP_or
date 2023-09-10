@@ -321,8 +321,10 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             if args.use_tricks_val:
                 if inst[2] == 3 and scores[index] < 0.08:
                     continue
+                if inst[2] == 7 and scores[index] < 0.08:
+                    continue
                 if inst[2] == 0:
-                    if scores[index] < 0.08:
+                    if scores[index] < 0.07:
                         continue
                     else:
                         hold = False
@@ -357,7 +359,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                         inst[2] == 0):
                     continue
                 if (not ((inst[0] == 7 and inst[1] == 2) or (
-                        inst[0] == 8 and inst[1] == 3))) and (
+                        inst[0] == 8 and inst[1] == 3) or (inst[0] == 6 and inst[1] == 5))) and (
                         inst[2] == 13):
                     continue
                 if (inst[0] not in [5, 6, 7, 8, 9]) and (
