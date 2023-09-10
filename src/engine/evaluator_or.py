@@ -263,13 +263,14 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
     model.eval()
 
-    metric_logger = loggers.MetricLogger(mode="test", delimiter="  ")
+    # metric_logger = loggers.MetricLogger(mode="test", delimiter="  ")
     header = 'Evaluation Inference (HICO-DET)'
 
     preds = []
     names = []
 
-    for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+    # for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+    for samples, name, multiview_samples, points in data_loader:
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
@@ -289,7 +290,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         preds.extend(results)
         names.extend(name)
 
-        if len(names) >= 100:
+        if len(names) >= 20:
             break
 
     # gather the stats from all processes
