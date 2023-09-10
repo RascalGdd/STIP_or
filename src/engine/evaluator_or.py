@@ -319,12 +319,12 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             obj = OBJECT_LABEL_MAP[int(inst[1])]
             verb = VERB_LABEL_MAP[int(inst[2])]
             if args.use_tricks_val:
-                if inst[2] == 3 and scores[index] < 0.09:
+                if inst[2] == 3 and scores[index] < 0.07:
                     continue
-                if inst[2] == 7 and scores[index] < 0.075:
+                if inst[2] == 7 and scores[index] < 0.07:
                     continue
                 if inst[2] == 0:
-                    if scores[index] < 0.08:
+                    if scores[index] < 0.06:
                         continue
                     else:
                         hold = False
@@ -335,12 +335,17 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                             if inst2[2] == 7 and inst2[0] == sub2:
                                 hold = True
                                 break
-                        if not hold:
+                        for p in range(preds[idx]["triplet"].shape[0]):
+                            inst2 = preds[idx]["triplet"][p]
+                            if inst2[2] not in [3, 8]:
+                                rest = False
+                                break
+                        if (not hold) and (not rest):
                             continue
 
                 if inst[0] == inst[1]:
                     continue
-                if inst[2] in [1, 5, 6, 11, 12, 2, 10] and (
+                if inst[2] in [1, 4, 5, 6, 11, 12] and (
                         inst[0] != 6 or inst[1] != 5):
                     continue
                 if inst[2] == 8 and (
@@ -350,7 +355,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                         (inst[0] not in [6, 7]) or inst[1] != 1):
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] != 5)) and (
-                        inst[2] == 4):
+                        inst[2] in [2, 10]):
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] != 4)) and (
                         inst[2] == 7):
