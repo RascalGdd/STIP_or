@@ -289,8 +289,8 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         preds.extend(results)
         names.extend(name)
 
-        # if len(names)>=2:
-        #     break
+        if len(names) >= 100:
+            break
 
     # gather the stats from all processes
     # metric_logger.synchronize_between_processes()
