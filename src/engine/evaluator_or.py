@@ -290,14 +290,14 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         preds.extend(results)
         names.extend(name)
 
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-        print(name)
-        # print("samples:", samples)
-        print("multiview_samples:", multiview_samples.tensors[0])
-        # print("points:", points)
-        # print("outputs:", outputs)
-        print("scores::", results[0]['ranked_scores'])
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        # print(name)
+        # # print("samples:", samples)
+        # print("multiview_samples:", multiview_samples.tensors[0])
+        # # print("points:", points)
+        # # print("outputs:", outputs)
+        # print("scores::", results[0]['ranked_scores'])
+        # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         if len(names) >= 20:
             break

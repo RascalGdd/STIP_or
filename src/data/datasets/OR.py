@@ -46,6 +46,7 @@ class CocoDetection_infer(Dataset):
             self.multiview_list.append([inst for inst in total_list if (k.split("_cam")[0] in inst and "cam_1" not in inst and int(inst.split("_")[-1].split(".")[0]) in self.views)])
         self.img_list.sort()
         self.multiview_list.sort()
+        print(self.multiview_list)
 
 
     def __getitem__(self, idx):
