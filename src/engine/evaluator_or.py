@@ -313,6 +313,10 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         sub_obj_pair_save = []
         scores = preds[idx]['ranked_scores']
         scores_matched = []
+        assisting_exist = False
+        cutting_exist = False
+
+
         for index in range(preds[idx]["triplet"].shape[0]):
             inst = preds[idx]["triplet"][index]
             sub = OBJECT_LABEL_MAP[int(inst[0])]
@@ -324,7 +328,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if inst[2] == 7 and scores[index] < 0.05:
                     continue
                 if inst[2] == 0:
-                    if scores[index] < 0.15:
+                    if scores[index] < 0.1 or assisting_exist:
                         continue
                     else:
                         hold = False
@@ -335,12 +339,12 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                             if inst2[2] == 7 and inst2[0] == sub2:
                                 hold = True
                                 break
-                        for p in range(preds[idx]["triplet"].shape[0]):
-                            inst2 = preds[idx]["triplet"][p]
-                            if inst2[2] not in [3, 8]:
-                                rest = False
-                                break
-                        if (not hold) and (not rest):
+                        # for p in range(preds[idx]["triplet"].shape[0]):
+                        #     inst2 = preds[idx]["triplet"][p]
+                        #     if inst2[2] not in [3, 8]:
+                        #         rest = False
+                        #         break
+                        if not hold:
                             continue
 
                 if inst[0] == inst[1]:
@@ -374,6 +378,8 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             if [sub, obj] not in sub_obj_pair_save and sub != obj:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
+                if verb == "Assisting":
+                    assisting_exist = True
                 scores_matched.append(scores[index])
             else:
                 pass
