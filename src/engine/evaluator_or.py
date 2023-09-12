@@ -60,6 +60,8 @@ VERB_LABEL_MAP_None = {
     13: "Touching",
     14: "None"
 }
+
+
 @torch.no_grad()
 def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     model.eval()
@@ -122,7 +124,6 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     _, indices = np.unique(img_ids, return_index=True)
     preds = [img_preds for i, img_preds in enumerate(preds) if i in indices]
     gts = [img_gts for i, img_gts in enumerate(gts) if i in indices]
-    
 
     # now 4DOR evaluation!
     OR_GT = []
@@ -140,7 +141,9 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         scores_matched = []
 
         if args.add_none:
-            all_pairs = torch.cat([torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i+1).unsqueeze(-1)], dim=1) for i in range(len(gts[iter]['labels'])-1)], dim=0)
+            all_pairs = torch.cat(
+                [torch.cat([gts[iter]['labels'].unsqueeze(-1), gts[iter]['labels'].roll(i + 1).unsqueeze(-1)], dim=1)
+                 for i in range(len(gts[iter]['labels']) - 1)], dim=0)
             all_pairs = torch.cat([all_pairs, (torch.zeros(all_pairs.shape[0], 1) + 14).to(all_pairs.device)], dim=1)
             for k in range(all_pairs.shape[0]):
                 pair = all_pairs[k]
@@ -149,7 +152,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                     if tmp[0] == pair[0] and tmp[1] == pair[1]:
                         all_pairs[k] = tmp
             gt_labels_sop = all_pairs
-        
+
         for index in range(gt_labels_sop.shape[0]):
             found = False
             if (gt_labels_sop[index][0], gt_labels_sop[index][1]) not in gt_pair_collection:
@@ -172,10 +175,12 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         if ((det_labels_sop_top[idx][0] != 7) or (det_labels_sop_top[idx][1] != 6)) and (
                                 det_labels_sop_top[idx][2] == 0):
                             continue
-                        if (not ((det_labels_sop_top[idx][0] == 6 and det_labels_sop_top[idx][1] == 5) or (det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 5))) and (
+                        if (not ((det_labels_sop_top[idx][0] == 6 and det_labels_sop_top[idx][1] == 5) or (
+                                det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 5))) and (
                                 det_labels_sop_top[idx][2] == 10):
                             continue
-                        if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
+                        if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (
+                                det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
                                 det_labels_sop_top[idx][2] == 13):
                             continue
                     elif args.use_tricks_val:
@@ -199,17 +204,20 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                         # if ((det_labels_sop_top[idx][0] != 7) or (det_labels_sop_top[idx][1] != 6)) and (
                         #         det_labels_sop_top[idx][2] == 0):
                         #     continue
-                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (det_labels_sop_top[idx][1] not in [6, 7])) and (
+                        if ((det_labels_sop_top[idx][0] not in [6, 7]) or (
+                                det_labels_sop_top[idx][1] not in [6, 7])) and (
                                 det_labels_sop_top[idx][2] == 0):
                             continue
-                        if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
+                        if (not ((det_labels_sop_top[idx][0] == 7 and det_labels_sop_top[idx][1] == 2) or (
+                                det_labels_sop_top[idx][0] == 8 and det_labels_sop_top[idx][1] == 3))) and (
                                 det_labels_sop_top[idx][2] == 13):
                             continue
                         if (det_labels_sop_top[idx][0] not in [5, 6, 7, 8, 9]) and (
                                 det_labels_sop_top[idx][2] != 3):
                             continue
 
-                    if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == det_labels_sop_top[idx][1]:
+                    if gt_labels_sop[index][0] == det_labels_sop_top[idx][0] and gt_labels_sop[index][1] == \
+                            det_labels_sop_top[idx][1]:
                         or_pred_img.append(det_labels_sop_top[idx][2])
                         scores_matched.append(det_scores[idx])
                         found = True
@@ -218,7 +226,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
                     or_pred_img.append(torch.tensor(14))
                     scores_matched.append(torch.tensor(0))
         OR_GT.extend(or_gt_img)
-#       Assisting filter
+        #       Assisting filter
         if args.use_tricks_val:
             for m, k in enumerate(or_pred_img):
                 if k == 3 and scores_matched[m] < 0.08:
@@ -250,7 +258,10 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     with open("eval_dict_gt.json", 'w') as f:
         json.dump(eval_dict_gt, f)
     cls_report = classification_report(OR_GT, OR_PRED,
-                                       target_names=["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching", "None"], output_dict=True)
+                                       target_names=["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting",
+                                                     "Drilling", "Hammering", "Holding", "LyingOn", "Operating",
+                                                     "Preparing", "Sawing", "Suturing", "Touching", "None"],
+                                       output_dict=True)
     print(cls_report)
 
     # if args.infer_val:
@@ -260,7 +271,6 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
 
 
 def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
-
     model.eval()
 
     metric_logger = loggers.MetricLogger(mode="test", delimiter="  ")
@@ -270,7 +280,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     names = []
 
     for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
-    # for samples, name, multiview_samples, points in data_loader:
+        # for samples, name, multiview_samples, points in data_loader:
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
@@ -280,9 +290,6 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         # outputs = model(samples, None, multiview_samples, points)
         # # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         # results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
-
-
-
 
         preds.extend(list(itertools.chain.from_iterable(utils.all_gather(results))))
         # For avoiding a runtime error, the copy is used
@@ -308,31 +315,23 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     final_dict2 = {}
     for idx in range(len(names)):
         relations = []
-        name = names[idx].split("cam_")[0]+"2"
+        name = names[idx].split("cam_")[0] + "2"
         name2 = names[idx].split("cam_")[0] + "1"
         sub_obj_pair_save = []
         scores = preds[idx]['ranked_scores']
         scores_matched = []
-        assisting_exist = False
-        cutting_exist = False
-        suturing_exist = False
-        touching_exist_hh = False
-        touching_exist_hi = False
-        touching_exist_hs = False
-
-
         for index in range(preds[idx]["triplet"].shape[0]):
             inst = preds[idx]["triplet"][index]
             sub = OBJECT_LABEL_MAP[int(inst[0])]
             obj = OBJECT_LABEL_MAP[int(inst[1])]
             verb = VERB_LABEL_MAP[int(inst[2])]
             if args.use_tricks_val:
-                if inst[2] == 3 and scores[index] < args.closeto:
+                if inst[2] == 3 and scores[index] < 0.12:
                     continue
                 if inst[2] == 7 and scores[index] < 0.05:
                     continue
                 if inst[2] == 0:
-                    if scores[index] < 0.15 or assisting_exist:
+                    if scores[index] < 0.15:
                         continue
                     else:
                         hold = False
@@ -353,21 +352,9 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
 
                 if inst[0] == inst[1]:
                     continue
-                if inst[2] in [1, 5, 6, 11] and (
+                if inst[2] in [1, 4, 5, 6, 11, 12] and (
                         inst[0] != 6 or inst[1] != 5):
                     continue
-
-                if inst[2] == 4 and (
-                        inst[0] not in [6, 7, 8] or inst[1] != 5):
-                    continue
-                if inst[2] == 4 and cutting_exist:
-                    continue
-                if inst[2] == 12 and (
-                        inst[0] not in [6, 7, 8] or inst[1] != 5):
-                    continue
-                if inst[2] == 12 and suturing_exist:
-                    continue
-
                 if inst[2] == 8 and (
                         inst[0] != 5 or inst[1] != 1):
                     continue
@@ -380,24 +367,14 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if ((inst[0] not in [6, 7]) or (inst[1] != 4)) and (
                         inst[2] == 7):
                     continue
-                if inst[2] == 0 and assisting_exist:
-                    continue
                 if ((inst[0] not in [6, 7]) or (inst[1] not in [6, 7])) and (
                         inst[2] == 0):
                     continue
-                # if (not ((inst[0] == 7 and inst[1] == 2) or (
-                #         inst[0] == 8 and inst[1] == 3) or (inst[0] == 6 and inst[1] == 5) or (inst[0] == 7 and inst[1] == 5))) and (
-                #         inst[2] == 13):
-                #     continue
-                if inst[2] == 13:
-                    if (inst[0] == 6 and inst[1] == 5) and not touching_exist_hh:
-                        pass
-                    elif (inst[0] in [6, 7, 8] and inst[1] == 2) and not touching_exist_hi:
-                        pass
-                    elif (inst[0] == 8 and inst[1] == 3) and not touching_exist_hs:
-                        pass
-                    else:
-                        continue
+                if (not ((inst[0] == 7 and inst[1] == 2) or (
+                        inst[0] == 8 and inst[1] == 3) or (inst[0] == 6 and inst[1] == 5) or (
+                                 inst[0] == 7 and inst[1] == 5))) and (
+                        inst[2] == 13):
+                    continue
                 if (inst[0] not in [5, 6, 7, 8, 9]) and (
                         inst[2] != 3):
                     continue
@@ -405,18 +382,6 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             if [sub, obj] not in sub_obj_pair_save and sub != obj:
                 relations.append([sub, verb, obj])
                 sub_obj_pair_save.append([sub, obj])
-                if verb == "Assisting":
-                    assisting_exist = True
-                if verb == "Cutting":
-                    cutting_exist = True
-                if verb == "Suturing":
-                    suturing_exist = True
-                if verb == "Touching" and sub in ["human_0", "human_1", "human_2"] and obj in ["human_0", "human_1", "human_2"]:
-                    touching_exist_hh = True
-                if verb == "Touching" and sub in ["human_0", "human_1", "human_2"] and obj == "instrument_table":
-                    touching_exist_hi = True
-                if verb == "Touching" and sub in ["human_0", "human_1", "human_2"] and obj == "secondary_table":
-                    touching_exist_hs = True
                 scores_matched.append(scores[index])
             else:
                 pass
@@ -431,5 +396,3 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         json.dump(final_dict2, f)
 
     return
-
-
