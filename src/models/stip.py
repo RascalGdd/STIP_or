@@ -287,7 +287,7 @@ class STIP(nn.Module):
                                                     memory_mask=memory_union_mask,
                                                     pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
                                                     memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
-                else:
+                elif self.args.use_multiviewfusion_last_view2:
                     memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
                                               memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1),memory_input_multiview[0::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
@@ -308,6 +308,25 @@ class STIP(nn.Module):
                                                     pos=memory_pos_last,
                                                     memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
 
+                elif self.args.use_multiviewfusion_last:
+                    memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                              memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
+                    memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
+                                                   memory_input_mask_multiview[2::3][imgid:imgid + 1].flatten(
+                                                       1).flatten(0).unsqueeze(0)], dim=1)
+                    memory_pos_last = torch.cat([memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                            memory_pos_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
+                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*1, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
+
+                    outs = self.interaction_decoder(tgt=query_reps,
+                                                    tgt_mask=tgt_mask,
+                                                    query_pos=query_pos_encoding,
+                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
+                                                    memory=memory_input_last,
+                                                    memory_key_padding_mask=memory_input_mask_last,
+                                                    memory_mask=memory_union_mask,
+                                                    pos=memory_pos_last,
+                                                    memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
 
             action_logits = self.action_embed(outs)
 

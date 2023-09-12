@@ -323,7 +323,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
             obj = OBJECT_LABEL_MAP[int(inst[1])]
             verb = VERB_LABEL_MAP[int(inst[2])]
             if args.use_tricks_val:
-                if inst[2] == 3 and scores[index] < 0.1:
+                if inst[2] == 3 and scores[index] < 0.12:
                     continue
                 if inst[2] == 7 and scores[index] < 0.05:
                     continue
