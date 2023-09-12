@@ -385,10 +385,19 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if ((inst[0] not in [6, 7]) or (inst[1] not in [6, 7])) and (
                         inst[2] == 0):
                     continue
-                if (not ((inst[0] == 7 and inst[1] == 2) or (
-                        inst[0] == 8 and inst[1] == 3) or (inst[0] == 6 and inst[1] == 5) or (inst[0] == 7 and inst[1] == 5))) and (
-                        inst[2] == 13):
-                    continue
+                # if (not ((inst[0] == 7 and inst[1] == 2) or (
+                #         inst[0] == 8 and inst[1] == 3) or (inst[0] == 6 and inst[1] == 5) or (inst[0] == 7 and inst[1] == 5))) and (
+                #         inst[2] == 13):
+                #     continue
+                if inst[2] == 13:
+                    if (inst[0] in [6, 7] and inst[1] == 5) and not touching_exist_hh:
+                        pass
+                    elif (inst[0] in [6, 7] and inst[1] == 2) and not touching_exist_hi:
+                        pass
+                    elif (inst[0] in [6, 7] and inst[1] == 3) and not touching_exist_hs:
+                        pass
+                    else:
+                        continue
                 if (inst[0] not in [5, 6, 7, 8, 9]) and (
                         inst[2] != 3):
                     continue
@@ -402,6 +411,12 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                     cutting_exist = True
                 if verb == "Suturing":
                     suturing_exist = True
+                if verb == "Touching" and sub in ["human_0", "human_1", "human_2"] and obj in ["human_0", "human_1","human_2"]:
+                    touching_exist_hh = True
+                if verb == "Touching" and sub in ["human_0", "human_1", "human_2"] and obj == "instrument_table":
+                    touching_exist_hi = True
+                if verb == "Touching" and sub in ["human_0", "human_1", "human_2"] and obj == "secondary_table":
+                    touching_exist_hs = True
                 scores_matched.append(scores[index])
             else:
                 pass
