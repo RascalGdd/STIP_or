@@ -332,7 +332,7 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 if inst[2] == 7 and scores[index] < 0.05:
                     continue
                 if inst[2] == 0:
-                    if scores[index] < 0.1 or assisting_exist:
+                    if scores[index] < 0.15 or assisting_exist:
                         continue
                     else:
                         hold = False
@@ -343,12 +343,12 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                             if inst2[2] == 7 and inst2[0] == sub2:
                                 hold = True
                                 break
-                        # for p in range(preds[idx]["triplet"].shape[0]):
-                        #     inst2 = preds[idx]["triplet"][p]
-                        #     if inst2[2] not in [3, 8]:
-                        #         rest = False
-                        #         break
-                        if not hold:
+                        for p in range(preds[idx]["triplet"].shape[0]):
+                            inst2 = preds[idx]["triplet"][p]
+                            if inst2[2] not in [3, 8]:
+                                rest = False
+                                break
+                        if (not hold) and (not rest):
                             continue
 
                 if inst[0] == inst[1]:
@@ -390,11 +390,11 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 #         inst[2] == 13):
                 #     continue
                 if inst[2] == 13:
-                    if (inst[0] in [6, 7] and inst[1] == 5) and not touching_exist_hh:
+                    if (inst[0] == 6 and inst[1] == 5) and not touching_exist_hh:
                         pass
-                    elif (inst[0] in [6, 7] and inst[1] == 2) and not touching_exist_hi:
+                    elif (inst[0] in [6, 7, 8] and inst[1] == 2) and not touching_exist_hi:
                         pass
-                    elif (inst[0] in [6, 7] and inst[1] == 3) and not touching_exist_hs:
+                    elif (inst[0] == 8 and inst[1] == 3) and not touching_exist_hs:
                         pass
                     else:
                         continue
