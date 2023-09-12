@@ -315,6 +315,10 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
         scores_matched = []
         assisting_exist = False
         cutting_exist = False
+        suturing_exist = False
+        touching_exist_hh = False
+        touching_exist_hi = False
+        touching_exist_hs = False
 
 
         for index in range(preds[idx]["triplet"].shape[0]):
@@ -327,31 +331,43 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                     continue
                 if inst[2] == 7 and scores[index] < 0.05:
                     continue
-                if inst[2] == 0:
-                    if scores[index] < 0.1 or assisting_exist:
-                        continue
-                    else:
-                        hold = False
-                        rest = True
-                        sub2 = inst[1]
-                        for o in range(preds[idx]["triplet"].shape[0]):
-                            inst2 = preds[idx]["triplet"][o]
-                            if inst2[2] == 7 and inst2[0] == sub2:
-                                hold = True
-                                break
-                        # for p in range(preds[idx]["triplet"].shape[0]):
-                        #     inst2 = preds[idx]["triplet"][p]
-                        #     if inst2[2] not in [3, 8]:
-                        #         rest = False
-                        #         break
-                        if not hold:
-                            continue
+                # if inst[2] == 0:
+                #     if scores[index] < 0.1 or assisting_exist:
+                #         continue
+                #     else:
+                #         hold = False
+                #         rest = True
+                #         sub2 = inst[1]
+                #         for o in range(preds[idx]["triplet"].shape[0]):
+                #             inst2 = preds[idx]["triplet"][o]
+                #             if inst2[2] == 7 and inst2[0] == sub2:
+                #                 hold = True
+                #                 break
+                #         # for p in range(preds[idx]["triplet"].shape[0]):
+                #         #     inst2 = preds[idx]["triplet"][p]
+                #         #     if inst2[2] not in [3, 8]:
+                #         #         rest = False
+                #         #         break
+                #         if not hold:
+                #             continue
 
                 if inst[0] == inst[1]:
                     continue
-                if inst[2] in [1, 4, 5, 6, 11, 12] and (
+                if inst[2] in [1, 5, 6, 11] and (
                         inst[0] != 6 or inst[1] != 5):
                     continue
+
+                if inst[2] == 4 and (
+                        inst[0] not in [6, 7] or inst[1] != 5):
+                    continue
+                if inst[2] == 4 and cutting_exist:
+                    continue
+                if inst[2] == 12 and (
+                        inst[0] not in [6, 7] or inst[1] != 5):
+                    continue
+                if inst[2] == 12 and suturing_exist:
+                    continue
+
                 if inst[2] == 8 and (
                         inst[0] != 5 or inst[1] != 1):
                     continue
@@ -363,6 +379,8 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] != 4)) and (
                         inst[2] == 7):
+                    continue
+                if inst[2] == 0 and assisting_exist:
                     continue
                 if ((inst[0] not in [6, 7]) or (inst[1] not in [6, 7])) and (
                         inst[2] == 0):
@@ -380,6 +398,10 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
                 sub_obj_pair_save.append([sub, obj])
                 if verb == "Assisting":
                     assisting_exist = True
+                if verb == "Cutting":
+                    cutting_exist = True
+                if verb == "Suturing":
+                    suturing_exist = True
                 scores_matched.append(scores[index])
             else:
                 pass
