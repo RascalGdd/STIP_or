@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from torch.nn.init import xavier_uniform_, constant_, uniform_, normal_
-
+from .transformer import *
 from src.util.misc import inverse_sigmoid
 from src.models.ops.modules import MSDeformAttn
 
@@ -46,10 +46,16 @@ class DeformableTransformer(nn.Module):
         if pointfusion:
             #  this part for points fusion
             self.points_mlp = MLP(291, 256, 256, 1)
-            decoder_layer_pointcloud = DeformableTransformerDecoderLayer(d_model, dim_feedforward,
-                                                              dropout, activation,
-                                                              num_feature_levels, nhead, dec_n_points)
-            self.pointsFusion = DeformableTransformerDecoder(decoder_layer_pointcloud, 2, False)
+            # decoder_layer_pointcloud = DeformableTransformerDecoderLayer(d_model, dim_feedforward,
+            #                                                   dropout, activation,
+            #                                                   num_feature_levels, nhead, dec_n_points)
+            # self.pointsFusion = DeformableTransformerDecoder(decoder_layer_pointcloud, 2, False)
+            pointsFusion_layer = TransformerDecoderLayer_multiview(d_model, nhead, dim_feedforward,
+                                                    dropout, activation, False)
+            pointsFusion_norm = nn.LayerNorm(d_model)
+            #  2 is the number of fusion layers
+            self.pointsFusion = TransformerDecoder(pointsFusion_layer, 2, pointsFusion_norm,
+                                              return_intermediate=False)
 
 
         self.level_embed = nn.Parameter(torch.Tensor(num_feature_levels, d_model))
@@ -198,7 +204,8 @@ class DeformableTransformer(nn.Module):
 
         if points_fusion:
             point_features = self.points_mlp(point_features)
-            memory = self.pointsFusion(memory, reference_points_pointcloud, point_features, spatial_shapes_pointcloud, level_start_index_pointcloud, valid_ratios_pointcloud)[0]
+            memory = self.pointsFusion(memory.permute(1, 0, 2), point_features.permute(1, 0, 2))[0].permute(1, 0, 2)
+        #     memory = self.pointsFusion(memory, reference_points_pointcloud, point_features, spatial_shapes_pointcloud, level_start_index_pointcloud, valid_ratios_pointcloud)[0]
 
         # decoder
         hs, inter_references = self.decoder(tgt, reference_points, memory,

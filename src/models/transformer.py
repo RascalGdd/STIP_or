@@ -38,6 +38,11 @@ class Transformer(nn.Module):
         encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
         self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
 
+        encoder_layer_additional = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
+                                                dropout, activation, normalize_before)
+        encoder_norm_additional = nn.LayerNorm(d_model) if normalize_before else None
+        self.encoder_additional = TransformerEncoder(encoder_layer_additional, num_encoder_layers, encoder_norm_additional)
+
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
         decoder_norm = nn.LayerNorm(d_model)
@@ -98,7 +103,7 @@ class Transformer(nn.Module):
         # ################### visualiazation ###################
 
         if multiview_fusion:
-            memory_multiview_remain_shape = self.encoder(src_multiview_remain_shape,
+            memory_multiview_remain_shape = self.encoder_additional(src_multiview_remain_shape,
                                                          src_key_padding_mask=mask_multiview_remain_shape,
                                                          pos=pos_embed_multiview_remain_shape)
             memory_multiview_split = memory_multiview_remain_shape.split(3, dim=1)
