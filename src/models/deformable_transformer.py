@@ -33,10 +33,10 @@ class DeformableTransformer(nn.Module):
         self.two_stage = two_stage
         self.two_stage_num_proposals = two_stage_num_proposals
 
-        # encoder_layer = DeformableTransformerEncoderLayer(d_model, dim_feedforward,
-        #                                                   dropout, activation,
-        #                                                   num_feature_levels, nhead, enc_n_points)
-        # self.encoder = DeformableTransformerEncoder(encoder_layer, num_encoder_layers)
+        encoder_layer = DeformableTransformerEncoderLayer(d_model, dim_feedforward,
+                                                          dropout, activation,
+                                                          num_feature_levels, nhead, enc_n_points)
+        self.encoder = DeformableTransformerEncoder(encoder_layer, num_encoder_layers)
 
         decoder_layer = DeformableTransformerDecoderLayer(d_model, dim_feedforward,
                                                           dropout, activation,
@@ -131,6 +131,11 @@ class DeformableTransformer(nn.Module):
         mask_flatten = []
         lvl_pos_embed_flatten = []
         spatial_shapes = []
+
+        srcs = [srcs]
+        masks = [masks]
+        pos_embeds = [pos_embeds]
+
         for lvl, (src, mask, pos_embed) in enumerate(zip(srcs, masks, pos_embeds)):
             bs, c, h, w = src.shape
             spatial_shape = (h, w)
@@ -150,7 +155,7 @@ class DeformableTransformer(nn.Module):
         valid_ratios = torch.stack([self.get_valid_ratio(m) for m in masks], 1)
 
         # # encoder
-        # memory = self.encoder(src_flatten, spatial_shapes, level_start_index, valid_ratios, lvl_pos_embed_flatten, mask_flatten)
+        memory = self.encoder(src_flatten, spatial_shapes, level_start_index, valid_ratios, lvl_pos_embed_flatten, mask_flatten)
 
         # prepare input for decoder
         bs, _, c = memory.shape
@@ -385,10 +390,10 @@ def build_deforamble_transformer(args):
         dropout=args.dropout,
         activation="relu",
         return_intermediate_dec=True,
-        num_feature_levels=args.num_feature_levels,
-        dec_n_points=args.dec_n_points,
-        enc_n_points=args.enc_n_points,
-        two_stage=args.two_stage,
+        num_feature_levels=1,
+        dec_n_points=4,
+        enc_n_points=4,
+        two_stage=False,
         two_stage_num_proposals=args.num_queries)
 
 

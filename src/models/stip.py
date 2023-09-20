@@ -11,6 +11,10 @@ from src.util.misc import accuracy, is_dist_avail_and_initialized, get_world_siz
 from src.models.stip_utils import check_annotation
 import time
 from .backbone_module import Pointnet2Backbone
+import PIL
+from matplotlib import colormaps
+# from torchvision.transforms.functional import to_pil_image
+# from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -85,6 +89,14 @@ class STIP(nn.Module):
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
 
+        # ################### visualiazation ###################
+        # img_tensor = samples.tensors[0].permute(1, 2, 0).detach().cpu().numpy()
+        # img_tensor = (img_tensor/2. + 1) / 2.
+        # plt.imshow(img_tensor)
+        # plt.savefig(f"ori.png")
+        #
+        # ################### visualiazation ###################
+
         start_time = time.time()
         # >>>>>>>>>>>>  BACKBONE LAYERS  <<<<<<<<<<<<<<<
         features, pos = self.detr.backbone(samples)
@@ -107,13 +119,20 @@ class STIP(nn.Module):
                 src_multiview.permute(0, 2, 3, 1).contiguous()).permute(0, 3, 1, 2).contiguous()
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
-        hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
+        if self.args.deformable_detr:
+            hs, _, detr_ref_outs, __, ___ = self.detr.transformer(self.detr.input_proj[0](src), mask, pos[-1], self.detr.query_embed.weight)
+        else:
+            hs, detr_encoder_outs, multiview_encoder_outs, heatmap = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         inst_repr = hs[-1]
         num_nodes = inst_repr.shape[1]
 
         # Prediction Heads for Object Detection
-        outputs_class = self.detr.class_embed(hs)
-        outputs_coord = self.detr.bbox_embed(hs).sigmoid()
+        if self.args.deformable_detr:
+            outputs_class = self.detr.class_embed[0](hs)
+            outputs_coord = self.detr.bbox_embed[0](hs).sigmoid()
+        else:
+            outputs_class = self.detr.class_embed(hs)
+            outputs_coord = self.detr.bbox_embed(hs).sigmoid()
         # -----------------------------------------------
 
         det2gt_indices = None

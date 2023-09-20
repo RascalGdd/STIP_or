@@ -14,13 +14,16 @@ Copy-paste from torch.nn.Transformer with modifications:
 """
 import copy
 from typing import Optional, List
-
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from .stip_utils import MultiheadAttention
 from .attention import MMG_teacher
 from .feed_forward import MLP
+from PIL import Image
+import numpy as np
+from torchvision.utils import save_image
 
 class Transformer(nn.Module):
 
@@ -97,16 +100,36 @@ class Transformer(nn.Module):
         pos_embed_multiview_split = pos_embed_multiview_remain_shape.split(3, dim=1)
         pos_embed_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in pos_embed_multiview_split], dim=0).permute(1, 0, 2)
 
+        # ################### visualiazation ###################
+        # vis = memory.permute(1, 2, 0).view(bs, c, h, w)[:, :1, :, :][0].permute(1, 2, 0).detach().cpu().numpy()
+        # plt.imshow(vis)
+        # plt.savefig(f"vis_before_multi.png")
+        # ################### visualiazation ###################
 
         if multiview_fusion:
             memory = self.multiviewFusion(memory, memory_multiview, memory_key_padding_mask=mask_multiview,
                                           pos=pos_embed_multiview, query_pos=pos_embed)[0]
+
+            # ################### visualiazation ###################
+            # vis = memory.permute(1, 2, 0).view(bs, c, h, w)[:, :1, :, :][0].permute(1, 2, 0).detach().cpu().numpy()
+            # # vis = (vis + 1) / 2.
+            # plt.imshow(vis)
+            # plt.savefig(f"vis_before_point.png")
+            # ################### visualiazation ###################
+
         if points_fusion:
             point_features = self.points_mlp(point_features)
             memory = self.pointsFusion(memory, point_features.permute(1, 0, 2))[0]
 
+            # ################### visualiazation ###################
+            # vis = memory.permute(1, 2, 0).view(bs, c, h, w)[:, :1, :, :][0].permute(1, 2, 0).detach().cpu().numpy()
+            # # vis = (vis + 1) / 2.
+            # plt.imshow(vis)
+            # plt.savefig(f"vis_after_point.png")
+            # ################### visualiazation ###################
+
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
-        return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w)
+        return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w), vis
 
 
 class TransformerEncoder(nn.Module):
