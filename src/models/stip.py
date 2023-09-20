@@ -120,9 +120,9 @@ class STIP(nn.Module):
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
         if self.args.deformable_detr:
-            hs, _, detr_ref_outs, __, ___ = self.detr.transformer(self.detr.input_proj[0](src), mask, pos[-1], self.detr.query_embed.weight)
+            hs, _, detr_ref_outs, __, ___ = self.detr.transformer(self.detr.input_proj[0](src), mask, pos[-1], self.detr.query_embed.weight, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         else:
-            hs, detr_encoder_outs, multiview_encoder_outs, heatmap = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
+            hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         inst_repr = hs[-1]
         num_nodes = inst_repr.shape[1]
 

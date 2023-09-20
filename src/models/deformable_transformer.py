@@ -10,7 +10,7 @@
 import copy
 from typing import Optional, List
 import math
-
+from .feed_forward import MLP
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
@@ -25,7 +25,7 @@ class DeformableTransformer(nn.Module):
                  num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=1024, dropout=0.1,
                  activation="relu", return_intermediate_dec=False,
                  num_feature_levels=4, dec_n_points=4,  enc_n_points=4,
-                 two_stage=False, two_stage_num_proposals=300):
+                 two_stage=False, two_stage_num_proposals=300, pointfusion=False):
         super().__init__()
 
         self.d_model = d_model
@@ -43,6 +43,15 @@ class DeformableTransformer(nn.Module):
                                                           num_feature_levels, nhead, dec_n_points)
         self.decoder = DeformableTransformerDecoder(decoder_layer, num_decoder_layers, return_intermediate_dec)
 
+        if pointfusion:
+            #  this part for points fusion
+            self.points_mlp = MLP(291, 256, 256, 1)
+            decoder_layer_pointcloud = DeformableTransformerDecoderLayer(d_model, dim_feedforward,
+                                                              dropout, activation,
+                                                              num_feature_levels, nhead, dec_n_points)
+            self.pointsFusion = DeformableTransformerDecoder(decoder_layer_pointcloud, 2, False)
+
+
         self.level_embed = nn.Parameter(torch.Tensor(num_feature_levels, d_model))
 
         if two_stage:
@@ -52,6 +61,7 @@ class DeformableTransformer(nn.Module):
             self.pos_trans_norm = nn.LayerNorm(d_model * 2)
         else:
             self.reference_points = nn.Linear(d_model, 2)
+            self.reference_points_pointcloud = nn.Linear(d_model, 2)
 
         self._reset_parameters()
 
@@ -123,7 +133,7 @@ class DeformableTransformer(nn.Module):
         valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
         return valid_ratio
 
-    def forward(self, srcs, masks, pos_embeds, query_embed=None):
+    def forward(self, srcs, masks, pos_embeds, query_embed=None, points_fusion=False, point_features=None):
         assert self.two_stage or query_embed is not None
 
         # prepare input for encoder
@@ -153,6 +163,9 @@ class DeformableTransformer(nn.Module):
         spatial_shapes = torch.as_tensor(spatial_shapes, dtype=torch.long, device=src_flatten.device)
         level_start_index = torch.cat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
         valid_ratios = torch.stack([self.get_valid_ratio(m) for m in masks], 1)
+        valid_ratios_pointcloud = torch.ones_like(valid_ratios)
+        level_start_index_pointcloud = torch.zeros_like(level_start_index)
+        spatial_shapes_pointcloud = 32 * torch.ones_like(spatial_shapes)
 
         # # encoder
         memory = self.encoder(src_flatten, spatial_shapes, level_start_index, valid_ratios, lvl_pos_embed_flatten, mask_flatten)
@@ -179,7 +192,13 @@ class DeformableTransformer(nn.Module):
             query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
             tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
             reference_points = self.reference_points(query_embed).sigmoid()
+            reference_points_pointcloud = self.reference_points_pointcloud(memory).sigmoid()
             init_reference_out = reference_points
+
+
+        if points_fusion:
+            point_features = self.points_mlp(point_features)
+            memory = self.pointsFusion(memory, reference_points_pointcloud, point_features, spatial_shapes_pointcloud, level_start_index_pointcloud, valid_ratios_pointcloud)[0]
 
         # decoder
         hs, inter_references = self.decoder(tgt, reference_points, memory,
@@ -394,6 +413,8 @@ def build_deforamble_transformer(args):
         dec_n_points=4,
         enc_n_points=4,
         two_stage=False,
-        two_stage_num_proposals=args.num_queries)
+        two_stage_num_proposals=args.num_queries,
+        pointfusion=args.use_pointsfusion,
+    )
 
 

@@ -81,25 +81,16 @@ class Transformer(nn.Module):
     def forward(self, src, mask, query_embed, pos_embed, src_multiview, mask_multiview, pos_embed_multiview, multiview_fusion=False, points_fusion=False, point_features=None):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
-        bs_multiview, c_multiview, h_multiview, w_multiview = src_multiview.shape
         src = src.flatten(2).permute(2, 0, 1)
         src_multiview_remain_shape = src_multiview.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
         pos_embed_multiview_remain_shape = pos_embed_multiview.flatten(2).permute(2, 0, 1)
-        query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
         mask = mask.flatten(1)
         mask_multiview_remain_shape = mask_multiview.flatten(1)
+        query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
 
         tgt = torch.zeros_like(query_embed)
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
-        memory_multiview_remain_shape = self.encoder(src_multiview_remain_shape, src_key_padding_mask=mask_multiview_remain_shape, pos=pos_embed_multiview_remain_shape)
-        memory_multiview_split = memory_multiview_remain_shape.split(3, dim=1)
-        memory_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in memory_multiview_split], dim=0).permute(1, 0, 2)
-        mask_multiview_split = mask_multiview_remain_shape.split(3, dim=0)
-        mask_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in mask_multiview_split], dim=0)
-        pos_embed_multiview_split = pos_embed_multiview_remain_shape.split(3, dim=1)
-        pos_embed_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in pos_embed_multiview_split], dim=0).permute(1, 0, 2)
-
         # ################### visualiazation ###################
         # vis = memory.permute(1, 2, 0).view(bs, c, h, w)[:, :1, :, :][0].permute(1, 2, 0).detach().cpu().numpy()
         # plt.imshow(vis)
@@ -107,6 +98,17 @@ class Transformer(nn.Module):
         # ################### visualiazation ###################
 
         if multiview_fusion:
+            memory_multiview_remain_shape = self.encoder(src_multiview_remain_shape,
+                                                         src_key_padding_mask=mask_multiview_remain_shape,
+                                                         pos=pos_embed_multiview_remain_shape)
+            memory_multiview_split = memory_multiview_remain_shape.split(3, dim=1)
+            memory_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in memory_multiview_split], dim=0).permute(
+                1, 0, 2)
+            mask_multiview_split = mask_multiview_remain_shape.split(3, dim=0)
+            mask_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in mask_multiview_split], dim=0)
+            pos_embed_multiview_split = pos_embed_multiview_remain_shape.split(3, dim=1)
+            pos_embed_multiview = torch.cat([k.flatten(0, 1).unsqueeze(0) for k in pos_embed_multiview_split],
+                                            dim=0).permute(1, 0, 2)
             memory = self.multiviewFusion(memory, memory_multiview, memory_key_padding_mask=mask_multiview,
                                           pos=pos_embed_multiview, query_pos=pos_embed)[0]
 
@@ -129,8 +131,10 @@ class Transformer(nn.Module):
             # ################### visualiazation ###################
 
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
-        return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w), vis
-
+        if multiview_fusion:
+            return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w)
+        else:
+            return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), None
 
 class TransformerEncoder(nn.Module):
 

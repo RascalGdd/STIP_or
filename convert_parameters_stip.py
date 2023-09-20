@@ -26,7 +26,7 @@ def get_args():
 
 
 def main(args):
-    ps = torch.load(r"params/detr-r50-pre-4dor-stip-noquery.pth")
+    ps = torch.load(r"params\r50_deformable_detr_single_scale-checkpoint.pth")
 
     # obj_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
     #            14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -49,8 +49,8 @@ def main(args):
         if "bbox_embed" in k or "class_embed" in k or "query_embed" in k:
             del ps['model'][k]
             print("delete embed")
-        if "backbone" in k:
-            del ps['model'][k]
+        # if "backbone" in k:
+        #     del ps['model'][k]
 
     # ps['model']['hum_bbox_embed.layers.0.weight'] = ps['model']['bbox_embed.layers.0.weight'].clone()
     # ps['model']['hum_bbox_embed.layers.0.bias'] = ps['model']['bbox_embed.layers.0.bias'].clone()
@@ -71,7 +71,7 @@ def main(args):
 
     # ps['model']['query_embed.weight'] = ps['model']['query_embed.weight'].clone()[:args.num_queries]
 
-    torch.save(ps, r"D:\DD\STIP_or\params\detr-r50-pre-4dor-stip-noquery_nobackbone.pth")
+    torch.save(ps, r"D:\DD\STIP_or\params\deformable-r50-pre-4dor-stip-noquery.pth")
 
 
 if __name__ == '__main__':
