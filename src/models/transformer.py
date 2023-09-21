@@ -137,7 +137,7 @@ class Transformer(nn.Module):
 
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask, pos=pos_embed, query_pos=query_embed)
         if multiview_fusion:
-            return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(3*bs, c, h, w)
+            return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), memory_multiview_remain_shape.permute(1, 2, 0).view(2*bs, c, h, w)
         else:
             return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w), None
 
