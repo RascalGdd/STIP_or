@@ -500,7 +500,7 @@ def build(args):
         num_classes=args.num_classes,
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
-        num_feature_levels=1,
+        num_feature_levels=args.num_feature_levels,
         with_box_refine=False,
         two_stage=False
     )

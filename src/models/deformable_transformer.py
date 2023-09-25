@@ -148,9 +148,10 @@ class DeformableTransformer(nn.Module):
         lvl_pos_embed_flatten = []
         spatial_shapes = []
 
-        srcs = [srcs]
-        masks = [masks]
-        pos_embeds = [pos_embeds]
+        if type(srcs) != list:
+            srcs = [srcs]
+            masks = [masks]
+            pos_embeds = [pos_embeds]
 
         for lvl, (src, mask, pos_embed) in enumerate(zip(srcs, masks, pos_embeds)):
             bs, c, h, w = src.shape
@@ -205,7 +206,7 @@ class DeformableTransformer(nn.Module):
         if points_fusion:
             point_features = self.points_mlp(point_features)
             memory = self.pointsFusion(memory.permute(1, 0, 2), point_features.permute(1, 0, 2))[0].permute(1, 0, 2)
-        #     memory = self.pointsFusion(memory, reference_points_pointcloud, point_features, spatial_shapes_pointcloud, level_start_index_pointcloud, valid_ratios_pointcloud)[0]
+        # #     memory = self.pointsFusion(memory, reference_points_pointcloud, point_features, spatial_shapes_pointcloud, level_start_index_pointcloud, valid_ratios_pointcloud)[0]
 
         # decoder
         hs, inter_references = self.decoder(tgt, reference_points, memory,
@@ -416,7 +417,7 @@ def build_deforamble_transformer(args):
         dropout=args.dropout,
         activation="relu",
         return_intermediate_dec=True,
-        num_feature_levels=1,
+        num_feature_levels=args.num_feature_levels,
         dec_n_points=4,
         enc_n_points=4,
         two_stage=False,

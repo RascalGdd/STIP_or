@@ -62,14 +62,19 @@ class BackboneBase(nn.Module):
             if not train_backbone or 'layer2' not in name and 'layer3' not in name and 'layer4' not in name:
                 parameter.requires_grad_(False) # fix other layers
         if return_interm_layers:
-            return_layers = {"layer1": "0", "layer2": "1", "layer3": "2", "layer4": "3"}
+            # return_layers = {"layer1": "0", "layer2": "1", "layer3": "2", "layer4": "3"}
+            return_layers = {"layer2": "0", "layer3": "1", "layer4": "2"}
+            self.strides = [8, 16, 32]
+            self.num_channels = [512, 1024, 2048]
         else:
             if args.use_high_resolution_relation_feature_map:
                 return_layers = {'layer3': "0", 'layer4': "1"}
             else:
                 return_layers = {'layer4': "0"}
+                self.strides = [8, 16, 32]
+                self.num_channels = num_channels
         self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
-        self.num_channels = num_channels
+
 
     def forward(self, tensor_list: NestedTensor):
         xs = self.body(tensor_list.tensors)
@@ -98,6 +103,7 @@ class Backbone(BackboneBase):
 class Joiner(nn.Sequential):
     def __init__(self, backbone, position_embedding):
         super().__init__(backbone, position_embedding)
+        self.strides = backbone.strides
 
     def forward(self, tensor_list: NestedTensor):
         xs = self[0](tensor_list)
@@ -114,7 +120,7 @@ class Joiner(nn.Sequential):
 def build_backbone(args):
     position_embedding = build_position_encoding(args)
     train_backbone = args.lr_backbone > 0
-    return_interm_layers = False # args.masks
+    return_interm_layers = args.num_feature_levels > 1
     backbone = Backbone(args, args.backbone, train_backbone, return_interm_layers, args.dilation)
     model = Joiner(backbone, position_embedding)
     model.num_channels = backbone.num_channels

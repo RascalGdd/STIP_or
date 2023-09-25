@@ -102,9 +102,32 @@ class STIP(nn.Module):
         features, pos = self.detr.backbone(samples)
         features_multiview, pos_multiview = self.detr.backbone(multiview_samples)
         bs = features[-1].tensors.shape[0]
-        src, mask = features[-1].decompose()
-        src_multiview, mask_multiview = features_multiview[-1].decompose()
-        assert mask is not None
+
+        if self.args.num_feature_levels > 1:
+            srcs = []
+            masks = []
+            for l, feat in enumerate(features):
+                src, mask = feat.decompose()
+                srcs.append(self.detr.input_proj[l](src))
+                masks.append(mask)
+                assert mask is not None
+            if self.args.num_feature_levels > len(srcs):
+                _len_srcs = len(srcs)
+                for l in range(_len_srcs, self.args.num_feature_levels):
+                    if l == _len_srcs:
+                        src = self.detr.input_proj[l](features[-1].tensors)
+                    else:
+                        src = self.detr.input_proj[l](srcs[-1])
+                    m = samples.mask
+                    mask = F.interpolate(m[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                    pos_l = self.detr.backbone[1](NestedTensor(src, mask)).to(src.dtype)
+                    srcs.append(src)
+                    masks.append(mask)
+                    pos.append(pos_l)
+        else:
+            src, mask = features[-1].decompose()
+            src_multiview, mask_multiview = features_multiview[-1].decompose()
+            assert mask is not None
         # >>>>>>>>>>>>   POINT CLOUD  <<<<<<<<<<<<<<<
         end_points = {}
         if self.args.use_pointsfusion:
@@ -120,7 +143,12 @@ class STIP(nn.Module):
 
         # >>>>>>>>>>>> OBJECT DETECTION LAYERS <<<<<<<<<<
         if self.args.deformable_detr:
-            hs, _, detr_ref_outs, __, ___ = self.detr.transformer(self.detr.input_proj[0](src), mask, pos[-1], self.detr.query_embed.weight, points_fusion=self.args.use_pointsfusion, point_features=point_features)
+            if self.args.num_feature_levels > 1:
+                hs, _, detr_ref_outs, __, ___ = self.detr.transformer(srcs, masks, pos, self.detr.query_embed.weight,
+                                                                      points_fusion=self.args.use_pointsfusion,
+                                                                      point_features=point_features)
+            else:
+                hs, _, detr_ref_outs, __, ___ = self.detr.transformer(self.detr.input_proj[0](src), mask, pos[-1], self.detr.query_embed.weight, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         else:
             hs, detr_encoder_outs, multiview_encoder_outs = self.detr.transformer(self.detr.input_proj(src), mask, self.detr.query_embed.weight, pos[-1], self.detr.input_proj(src_multiview), mask_multiview, pos_multiview[-1], multiview_fusion=self.args.use_multiviewfusion, points_fusion=self.args.use_pointsfusion, point_features=point_features)
         inst_repr = hs[-1]
@@ -128,8 +156,8 @@ class STIP(nn.Module):
 
         # Prediction Heads for Object Detection
         if self.args.deformable_detr:
-            outputs_class = self.detr.class_embed[0](hs)
-            outputs_coord = self.detr.bbox_embed[0](hs).sigmoid()
+            outputs_class = self.detr.class_embed[-1](hs)
+            outputs_coord = self.detr.bbox_embed[-1](hs).sigmoid()
         else:
             outputs_class = self.detr.class_embed(hs)
             outputs_coord = self.detr.bbox_embed(hs).sigmoid()
@@ -154,13 +182,13 @@ class STIP(nn.Module):
 
         # >>>>>>>>>>>> HOI DETECTION LAYERS <<<<<<<<<<<<<<<
         pred_rel_exists, pred_rel_pairs, pred_actions = [], [], []
-        memory_input, memory_input_mask = features[0].decompose()
-        memory_input_multiview, memory_input_mask_multiview = features_multiview[0].decompose()
-        memory_pos = pos[0]
-        memory_pos_multiview = pos_multiview[0]
+        memory_input, memory_input_mask = features[-1].decompose()
+        memory_input_multiview, memory_input_mask_multiview = features_multiview[-1].decompose()
+        memory_pos = pos[-1] if self.args.num_feature_levels == 1 else pos[-2]
+        memory_pos_multiview = pos_multiview[-1]
         if self.args.relation_feature_map_from == 'backbone':
-            relation_feature_map = features[0]
-            relation_feature_map_multiview = features_multiview[0]
+            relation_feature_map = features[-1]
+            relation_feature_map_multiview = features_multiview[-1]
         elif self.args.relation_feature_map_from == 'detr_encoder':
             relation_feature_map = NestedTensor(detr_encoder_outs, memory_input_mask)
             relation_feature_map_multiview = NestedTensor(multiview_encoder_outs, memory_input_mask_multiview)

@@ -319,6 +319,7 @@ if __name__ == '__main__':
     parser.add_argument('--infer_name', default='infer_or.json',
                         help='infer json save path')
     parser.add_argument('--closeto', default=0.12, type=float)
+    parser.add_argument('--num_feature_levels', default=1, type=int)
 
 
     args = parser.parse_args()

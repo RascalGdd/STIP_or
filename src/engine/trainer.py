@@ -13,6 +13,7 @@ import src.util.logger as loggers
 from typing import Iterable
 # import wandb
 from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
+import time
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -24,7 +25,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     space_fmt = str(len(str(max_epoch)))
     header = 'Epoch [{start_epoch: >{fill}}/{end_epoch}]'.format(start_epoch=epoch+1, end_epoch=max_epoch, fill=space_fmt)
     # print_freq = int(len(data_loader)/5)
-    print_freq = 50
+    print_freq = 1
 
     print(f"\n>>> Epoch #{(epoch+1)}")
     for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, print_freq, header):
@@ -53,14 +54,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             print(loss_dict_reduced)
             sys.exit(1)
 
+        start_time = time.time()
         optimizer.zero_grad()
         losses.backward()
         if max_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
-
-        # check_annotation(samples, targets, mode='train', rel_num=20)
-        # plot_hoi_results(samples, outputs, targets, args=model.args)
+        gradientbackward_time = time.time() - start_time
+        print("gradientbackward_time", gradientbackward_time)
 
         metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled)
         if "obj_class_error" in loss_dict:
