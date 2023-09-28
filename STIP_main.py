@@ -204,7 +204,7 @@ def main(args):
         if isinstance(lr_scheduler, torch.optim.lr_scheduler.StepLR): lr_scheduler.step()
 
         # Validation
-        if args.validate:
+        if args.validate and epoch >= 40:
             print('-'*100)
             if args.dataset_file == 'vcoco':
                 total_res = hoi_evaluator(args, model, criterion, postprocessors, data_loader_val, device)
