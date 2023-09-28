@@ -284,6 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_head_semantic_feature', action='store_true', default=False)
     parser.add_argument('--use_multiviewfusion_last', action='store_true', default=False)
     parser.add_argument('--use_multiviewfusion_last_view2', action='store_true', default=False)
+    parser.add_argument('--use_multiviewfusion_last_all', action='store_true', default=False)
     parser.add_argument('--deformable_detr', action='store_true', default=False)
     parser.add_argument('--visualization', action='store_true', default=False)
 
