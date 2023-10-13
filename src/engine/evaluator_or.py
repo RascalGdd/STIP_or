@@ -13,6 +13,8 @@ import src.util.logger as loggers
 from src.data.evaluators.or_eval import OREvaluator
 from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
 import json
+from src.engine.task_evaluation_sg import eval_rel_results
+from src.util import box_ops
 
 OBJECT_LABEL_MAP = {
     0: 'anesthesia_equipment',
@@ -74,6 +76,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     indices = []
     hoi_recognition_time = []
     names = []
+    reltr_result = []
 
     for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
@@ -85,6 +88,35 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessors['hoi'](outputs, orig_target_sizes, threshold=thr, dataset='or')
         hoi_recognition_time.append(results[0]['hoi_recognition_time'] * 1000)
+
+        for res_dict, target in zip(results, targets):
+            length = int(res_dict['boxes'].shape[0]/2)
+            # print(res_dict['obj_scores'].shape)
+            # print(res_dict['labels'][length:].shape)
+            reltr_res_dict = {'sbj_boxes': res_dict['boxes'][:length].cpu().clone().numpy(),
+                                 'sbj_labels': res_dict['labels'][:length].cpu().clone().numpy(),
+                                 'sbj_scores': res_dict['sbj_scores'].cpu().clone().numpy(),
+                                 'obj_boxes': res_dict['boxes'][length:].cpu().clone().numpy(),
+                                 'obj_labels': res_dict['labels'][length:].cpu().clone().numpy(),
+                                 'obj_scores': res_dict['obj_scores'].cpu().clone().numpy(),
+                                 'prd_scores': res_dict['verb_scores'].cpu().clone().numpy(),
+                                 'image': str(target['image_id'].item()) + '.jpg',
+                                 'gt_sbj_boxes': target['sub_boxes'],
+                                 'gt_sbj_labels': target['gt_triplet'][:, 0].cpu().clone().numpy(),
+                                 'gt_obj_boxes': target['obj_boxes'],
+                                 'gt_obj_labels': target['gt_triplet'][:, 1].cpu().clone().numpy(),
+                                 'gt_prd_labels': target['gt_triplet'][:, 2].cpu().clone().numpy()
+                                 }
+
+            gt_sbj_boxes = box_ops.box_cxcywh_to_xyxy(reltr_res_dict['gt_sbj_boxes'])
+            gt_obj_boxes = box_ops.box_cxcywh_to_xyxy(reltr_res_dict['gt_obj_boxes'])
+            img_h, img_w = orig_target_sizes.unbind(1)
+            scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+            gt_sbj_boxes = gt_sbj_boxes * scale_fct[0, None, :]
+            gt_obj_boxes = gt_obj_boxes * scale_fct[0, None, :]
+            reltr_res_dict['gt_sbj_boxes'] = gt_sbj_boxes.cpu().clone().numpy()
+            reltr_res_dict['gt_obj_boxes'] = gt_obj_boxes.cpu().clone().numpy()
+            reltr_result.append(reltr_res_dict)
 
         # # visualize
         # if targets[0]['id'] in [57]: # [47, 57, 81, 30, 46, 97]: # 30, 46, 97
@@ -116,6 +148,7 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
 
         # if len(gts) >= 2:
         #     break
+    eval_rel_results(reltr_result, 100, do_val=True, do_vis=False)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

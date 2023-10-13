@@ -878,7 +878,9 @@ class STIPPostProcess(nn.Module):
                     'sub_ids': ids[:ids.shape[0] // 2],
                     'obj_ids': ids[ids.shape[0] // 2:],
                     'hoi_recognition_time': outputs['hoi_recognition_time'],
-                    'orig_size': torch.tensor([img_h[batch_idx], img_w[batch_idx]])
+                    'orig_size': torch.tensor([img_h[batch_idx], img_w[batch_idx]]),
+                    'sbj_scores': ss,
+                    'obj_scores': os
                 }
                 triplet = []
                 for i in range(len(res_dict['sub_ids'])):
