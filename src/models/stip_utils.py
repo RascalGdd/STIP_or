@@ -459,17 +459,24 @@ class MultiheadAttention(torch.nn.Module):
             memory_role_embedding=memory_role_embedding
         )
 
+# # 91
+# coco_obj_names = ['N/A', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table', 'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+# # 80
+# hico_obj_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90]
+# hico_obj_names = [coco_obj_names[id] for id in hico_obj_ids]
+# # 117
+# hico_action_names = ['adjust', 'assemble', 'block', 'blow', 'board', 'break', 'brush_with', 'buy', 'carry', 'catch', 'chase', 'check', 'clean', 'control', 'cook', 'cut', 'cut_with', 'direct', 'drag', 'dribble', 'drink_with', 'drive', 'dry', 'eat', 'eat_at', 'exit', 'feed', 'fill', 'flip', 'flush', 'fly', 'greet', 'grind', 'groom', 'herd', 'hit', 'hold', 'hop_on', 'hose', 'hug', 'hunt', 'inspect', 'install', 'jump', 'kick', 'kiss', 'lasso', 'launch', 'lick', 'lie_on', 'lift', 'light', 'load', 'lose', 'make', 'milk', 'move', 'no_interaction', 'open', 'operate', 'pack', 'paint', 'park', 'pay', 'peel', 'pet', 'pick', 'pick_up', 'point', 'pour', 'pull', 'push', 'race', 'read', 'release', 'repair', 'ride', 'row', 'run', 'sail', 'scratch', 'serve', 'set', 'shear', 'sign', 'sip', 'sit_at', 'sit_on', 'slide', 'smell', 'spin', 'squeeze', 'stab', 'stand_on', 'stand_under', 'stick', 'stir', 'stop_at', 'straddle', 'swing', 'tag', 'talk_on', 'teach', 'text_on', 'throw', 'tie', 'toast', 'train', 'turn', 'type_on', 'walk', 'wash', 'watch', 'wave', 'wear', 'wield', 'zip']
+
 # 91
-coco_obj_names = ['N/A', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table', 'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
-# 80
-hico_obj_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90]
+coco_obj_names = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human_0','human_1','human_2','human_3','human_4']
+hico_obj_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 hico_obj_names = [coco_obj_names[id] for id in hico_obj_ids]
-# 117
-hico_action_names = ['adjust', 'assemble', 'block', 'blow', 'board', 'break', 'brush_with', 'buy', 'carry', 'catch', 'chase', 'check', 'clean', 'control', 'cook', 'cut', 'cut_with', 'direct', 'drag', 'dribble', 'drink_with', 'drive', 'dry', 'eat', 'eat_at', 'exit', 'feed', 'fill', 'flip', 'flush', 'fly', 'greet', 'grind', 'groom', 'herd', 'hit', 'hold', 'hop_on', 'hose', 'hug', 'hunt', 'inspect', 'install', 'jump', 'kick', 'kiss', 'lasso', 'launch', 'lick', 'lie_on', 'lift', 'light', 'load', 'lose', 'make', 'milk', 'move', 'no_interaction', 'open', 'operate', 'pack', 'paint', 'park', 'pay', 'peel', 'pet', 'pick', 'pick_up', 'point', 'pour', 'pull', 'push', 'race', 'read', 'release', 'repair', 'ride', 'row', 'run', 'sail', 'scratch', 'serve', 'set', 'shear', 'sign', 'sip', 'sit_at', 'sit_on', 'slide', 'smell', 'spin', 'squeeze', 'stab', 'stand_on', 'stand_under', 'stick', 'stir', 'stop_at', 'straddle', 'swing', 'tag', 'talk_on', 'teach', 'text_on', 'throw', 'tie', 'toast', 'train', 'turn', 'type_on', 'walk', 'wash', 'watch', 'wave', 'wear', 'wield', 'zip']
+hico_action_names = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+
 
 # 29 (25 valid)
 vcoco_action_names = ['hold_obj', 'stand_agent', 'sit_instr', 'ride_instr', 'walk_agent', 'look_obj', 'hit_instr', 'hit_obj', 'eat_obj', 'eat_instr', 'jump_instr', 'lay_instr', 'talk_on_phone_instr', 'carry_obj', 'throw_obj', 'catch_obj', 'cut_instr', 'cut_obj', 'run_agent', 'work_on_computer_instr', 'ski_instr', 'surf_instr', 'skateboard_instr', 'smile_agent', 'drink_instr', 'kick_obj', 'point_instr', 'read_obj', 'snowboard_instr']
-vcoco_valid_action_ids = [ 0,  2,  3,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22, 24, 25, 26, 27, 28]
+vcoco_valid_action_ids = [0,  2,  3,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22, 24, 25, 26, 27, 28]
 
 def check_annotation(samples, annotations, mode='train', rel_num=20, idx=0, dataset='hico'):
     obj_label_names = coco_obj_names
@@ -523,14 +530,15 @@ def check_annotation(samples, annotations, mode='train', rel_num=20, idx=0, data
 
 COLORS = [[0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
           [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933]]
-def plot_cross_attention(samples, results, targets, attn_maps, idx=0, dataset='hico', topk_qids=None):
+
+def plot_cross_attention_view6(samples, results, targets, attn_maps, idx=0, dataset='hico', topk_qids=None):
     if dataset == 'vcoco':
         action_label_names = vcoco_action_names
     else:
         action_label_names = hico_action_names
 
     pil_imgs, masks = samples.decompose()
-    pil_img, mask, attn_map = pil_imgs[idx], masks[idx], attn_maps[idx]
+    pil_img, mask, attn_map = pil_imgs[-1], masks[-1], attn_maps[idx]
 
     pil_img = ((pil_img - pil_img.min()) / (pil_img.max() - pil_img.min())).permute(1,2,0).cpu().numpy()
     h, w = (~mask).float().nonzero(as_tuple=False).max(0)[0] + 1
@@ -539,7 +547,7 @@ def plot_cross_attention(samples, results, targets, attn_maps, idx=0, dataset='h
     boxes = box_ops.box_cxcywh_to_xyxy(results['pred_boxes'][idx].cpu()) * torch.tensor([w,h,w,h])
     box_scores, box_labels = results['pred_logits'][idx].softmax(-1)[:, :-1].cpu().max(-1)
 
-    pair_id_counts = 4
+    pair_id_counts = 20
     if topk_qids is not None:
         plot_qids = []
         for q in topk_qids:
@@ -569,6 +577,8 @@ def plot_cross_attention(samples, results, targets, attn_maps, idx=0, dataset='h
         if dataset == 'vcoco':
             for k in range(len(action_probs)):
                 if k not in vcoco_valid_action_ids: action_probs[k] = -1
+        for k in range(len(action_probs)):
+            if k == 3: action_probs[k] = -1
         action_scores, action_labels = action_probs.sort(descending=True)
         # pair_action_label_names = '\n'.join([f"{action_label_names[action_labels[k]]} ({action_scores[k]: 0.2f})" for k in range(len(action_labels)) if k<3 or action_scores[k] > 0.5])
         pair_action_label_names = f"qid={pair_id}:   " + ', '.join([f"{action_label_names[action_labels[k]]}({action_scores[k]: .2f})" for k in range(len(action_labels)) if k<3])
@@ -578,37 +588,261 @@ def plot_cross_attention(samples, results, targets, attn_maps, idx=0, dataset='h
         fH, fW = int(np.ceil(masks.shape[1] / featmap_scale)), int(np.ceil(masks.shape[2] / featmap_scale))
         fh, fw = h // featmap_scale + 1, w // featmap_scale + 1
 
+        #  visualization main view
+        length = int(attn_map.shape[-1] // 2)
+        if length == 850:
+            # attn_map = attn_map[:, :, :length]
+            attn_map = attn_map[:, :, length:]
+
         pair_attention = attn_map[0, pair_id].view(fH, fW)[:fh, :fw]
         pair_attention = (pair_attention - pair_attention.min()) / (pair_attention.max() - pair_attention.min())
         pair_attention = F.interpolate(pair_attention.unsqueeze(0).unsqueeze(1), size=pil_img.shape[:-1], mode='bilinear').squeeze().cpu().numpy()
 
         # show_img = pil_img * 0.3 + 0.7 * pair_attention[:,:,None]
         ax.imshow(pair_attention, vmax=0.7)
-        ax.imshow(pil_img, alpha=0.15)
+        ax.imshow(pil_img, alpha=0.45)
+
+        ######## relation pair boxes ##########
+        # head
+        # hxmin, hymin, hxmax, hymax = boxes[subj_id]
+        # ax.add_patch(plt.Rectangle((hxmin, hymin), hxmax - hxmin, hymax - hymin, fill=False, color='red', linewidth=5))
+        # text = f'{coco_obj_names[box_labels[subj_id]]}_{subj_id}({box_scores[subj_id]: 0.2f})'
+        text1 = f'{coco_obj_names[box_labels[subj_id]]}'
+        # ax.text(hxmin, hymin, text, fontsize=22, bbox=dict(facecolor='red', alpha=0.3))
+        # ax.text(hxmin, hymin, text, fontsize=22, color='white')
+
+        # tail
+        # txmin, tymin, txmax, tymax = boxes[obj_id]
+        # ax.add_patch(plt.Rectangle((txmin, tymin), txmax - txmin, tymax - tymin, fill=False, color='blue', linewidth=5))
+        # # text = f'{coco_obj_names[box_labels[obj_id]]}_{obj_id}({box_scores[obj_id]: 0.2f})'
+        text2 = f'{coco_obj_names[box_labels[obj_id]]}'
+        # ax.text(txmin, tymin, text, fontsize=22, bbox=dict(facecolor='yellow', alpha=0.3))
+        # ax.text(txmin, tymin, text, fontsize=22, color='white')
+
+
+
+        # head -> tail arrow
+        # ax1, ay1, ax2, ay2 = (hxmin+hxmax) / 2, (hymin+hymax) / 2, (txmin+txmax) / 2, (tymin+tymax) / 2
+        # axes[1].add_patch(patches.FancyArrow(ax1, ay1, ax2-ax1, ay2-ay1, color='blue', linewidth=5))
+        # axes[1].arrow(ax1, ay1, ax2-ax1, ay2-ay1, color='blue')
+        # ax.plot(ax1, ay1, 'o', color='red', markersize=20)
+        # ax.arrow(ax1, ay1, ax2-ax1, ay2-ay1, head_width=10, head_length=10, color='orange', linewidth=8)
+
+        # ax.set_title(pair_action_label_names, fontsize=16)
+        ax.set_title(text1+"_to_"+text2, fontsize=16)
+        ax.set_axis_off()
+        print(pair_id)
+
+    plt.show()
+    print(pair_action_label_names)
+
+
+
+def plot_cross_attention_bbox(samples, results, targets, attn_maps, idx=0, dataset='hico', topk_qids=None):
+    if dataset == 'vcoco':
+        action_label_names = vcoco_action_names
+    else:
+        action_label_names = hico_action_names
+
+    pil_imgs, masks = samples.decompose()
+    pil_img, mask, attn_map = pil_imgs[idx], masks[idx], attn_maps[idx]
+
+    pil_img = ((pil_img - pil_img.min()) / (pil_img.max() - pil_img.min())).permute(1,2,0).cpu().numpy()
+    h, w = (~mask).float().nonzero(as_tuple=False).max(0)[0] + 1
+    pil_img = pil_img[:h, :w]
+
+    boxes = box_ops.box_cxcywh_to_xyxy(results['pred_boxes'][idx].cpu()) * torch.tensor([w,h,w,h])
+    box_scores, box_labels = results['pred_logits'][idx].softmax(-1)[:, :-1].cpu().max(-1)
+
+    pair_id_counts = 20
+    if topk_qids is not None:
+        plot_qids = []
+        for q in topk_qids:
+            if q not in plot_qids and len(plot_qids) < pair_id_counts :
+                plot_qids.append(q)
+    else:
+        plot_qids = list(range(pair_id_counts))
+    plot_num = pair_id_counts+1
+    _, axes = plt.subplots(1, plot_num, figsize=(9*plot_num, 7))
+    ######## plt boxes ##########
+    # axes[0].set_title(f"image_id={targets[idx]['image_id'].item()}")
+    axes[0].imshow(pil_img)
+    # colors = COLORS * 100
+    # for sc, l, (xmin, ymin, xmax, ymax), c in zip(box_scores, box_labels, boxes, colors):
+    #     if sc < 0.9: continue
+    #     axes[0].add_patch(plt.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, fill=False, color=c, linewidth=3))
+    #     text = f'{coco_obj_names[l]}({sc:0.2f})'
+    #     axes[0].text(xmin, ymin, text, fontsize=14, bbox=dict(facecolor='yellow', alpha=0.5))
+    axes[0].set_axis_off()
+
+    plot_qids.sort()
+    for aidx, pair_id in enumerate(plot_qids):
+        ax = axes[aidx+1]
+        ######## specific relation ##########
+        subj_id, obj_id = results['pred_rel_pairs'][idx][pair_id]
+        action_probs = results['pred_actions'][idx][pair_id].sigmoid().cpu()
+        if dataset == 'vcoco':
+            for k in range(len(action_probs)):
+                if k not in vcoco_valid_action_ids: action_probs[k] = -1
+        for k in range(len(action_probs)):
+            if k == 3: action_probs[k] = -1
+        action_scores, action_labels = action_probs.sort(descending=True)
+        # pair_action_label_names = '\n'.join([f"{action_label_names[action_labels[k]]} ({action_scores[k]: 0.2f})" for k in range(len(action_labels)) if k<3 or action_scores[k] > 0.5])
+        pair_action_label_names = f"qid={pair_id}:   " + ', '.join([f"{action_label_names[action_labels[k]]}({action_scores[k]: .2f})" for k in range(len(action_labels)) if k<3])
+
+        ######## img with cross attention ##########
+        featmap_scale = 32
+        fH, fW = int(np.ceil(masks.shape[1] / featmap_scale)), int(np.ceil(masks.shape[2] / featmap_scale))
+        fh, fw = h // featmap_scale + 1, w // featmap_scale + 1
+
+        #  visualization main view
+        length = int(attn_map.shape[-1] // 2)
+        if length == 850:
+            attn_map = attn_map[:, :, :length]
+            # attn_map = attn_map[:, :, length:]
+
+        pair_attention = attn_map[0, pair_id].view(fH, fW)[:fh, :fw]
+        pair_attention = (pair_attention - pair_attention.min()) / (pair_attention.max() - pair_attention.min())
+        pair_attention = F.interpolate(pair_attention.unsqueeze(0).unsqueeze(1), size=pil_img.shape[:-1], mode='bilinear').squeeze().cpu().numpy()
+
+        # show_img = pil_img * 0.3 + 0.7 * pair_attention[:,:,None]
+        ax.imshow(pair_attention, vmax=0.7)
+        ax.imshow(pil_img, alpha=0.45)
 
         ######## relation pair boxes ##########
         # head
         hxmin, hymin, hxmax, hymax = boxes[subj_id]
-        ax.add_patch(plt.Rectangle((hxmin, hymin), hxmax - hxmin, hymax - hymin, fill=False, color='red', linewidth=3))
+        ax.add_patch(plt.Rectangle((hxmin, hymin), hxmax - hxmin, hymax - hymin, fill=False, color='red', linewidth=5))
         # text = f'{coco_obj_names[box_labels[subj_id]]}_{subj_id}({box_scores[subj_id]: 0.2f})'
-        text = f'{coco_obj_names[box_labels[subj_id]]}_{subj_id}'
-        ax.text(hxmin, hymin, text, fontsize=22, bbox=dict(facecolor='red', alpha=0.3))
+        text1 = f'{coco_obj_names[box_labels[subj_id]]}'
+        # ax.text(hxmin, hymin, text, fontsize=22, bbox=dict(facecolor='red', alpha=0.3))
+        # ax.text(hxmin, hymin, text, fontsize=22, color='white')
 
         # tail
         txmin, tymin, txmax, tymax = boxes[obj_id]
-        ax.add_patch(plt.Rectangle((txmin, tymin), txmax - txmin, tymax - tymin, fill=False, color='yellow', linewidth=3))
+        ax.add_patch(plt.Rectangle((txmin, tymin), txmax - txmin, tymax - tymin, fill=False, color='blue', linewidth=5))
         # text = f'{coco_obj_names[box_labels[obj_id]]}_{obj_id}({box_scores[obj_id]: 0.2f})'
-        text = f'{coco_obj_names[box_labels[obj_id]]}_{obj_id}'
-        ax.text(txmin, tymin, text, fontsize=22, bbox=dict(facecolor='yellow', alpha=0.3))
+        text2 = f'{coco_obj_names[box_labels[obj_id]]}'
+        # ax.text(txmin, tymin, text, fontsize=22, bbox=dict(facecolor='yellow', alpha=0.3))
+        # ax.text(txmin, tymin, text, fontsize=22, color='white')
+
+
 
         # head -> tail arrow
         ax1, ay1, ax2, ay2 = (hxmin+hxmax) / 2, (hymin+hymax) / 2, (txmin+txmax) / 2, (tymin+tymax) / 2
         # axes[1].add_patch(patches.FancyArrow(ax1, ay1, ax2-ax1, ay2-ay1, color='blue', linewidth=5))
         # axes[1].arrow(ax1, ay1, ax2-ax1, ay2-ay1, color='blue')
-        ax.plot(ax1, ay1, 'o', color='red', markersize=20)
-        ax.arrow(ax1, ay1, ax2-ax1, ay2-ay1, head_width=10, head_length=10, color='orange', linewidth=8)
+        ax.plot(ax1, ay1, 'o', color='red', markersize=15)
+        # ax.arrow(ax1, ay1, ax2-ax1, ay2-ay1, head_width=10, head_length=10, color='orange', linewidth=8)
 
-        ax.set_title(pair_action_label_names, fontsize=16)
+        # ax.set_title(pair_action_label_names, fontsize=16)
+        ax.set_title(text1+"_to_"+text2, fontsize=16)
+        ax.set_axis_off()
+        print(pair_id)
+
+    plt.show()
+    print(pair_action_label_names)
+
+
+def plot_cross_attention(samples, results, targets, attn_maps, idx=0, dataset='hico', topk_qids=None):
+    if dataset == 'vcoco':
+        action_label_names = vcoco_action_names
+    else:
+        action_label_names = hico_action_names
+
+    pil_imgs, masks = samples.decompose()
+    pil_img, mask, attn_map = pil_imgs[idx], masks[idx], attn_maps[idx]
+
+    pil_img = ((pil_img - pil_img.min()) / (pil_img.max() - pil_img.min())).permute(1,2,0).cpu().numpy()
+    h, w = (~mask).float().nonzero(as_tuple=False).max(0)[0] + 1
+    pil_img = pil_img[:h, :w]
+
+    boxes = box_ops.box_cxcywh_to_xyxy(results['pred_boxes'][idx].cpu()) * torch.tensor([w,h,w,h])
+    box_scores, box_labels = results['pred_logits'][idx].softmax(-1)[:, :-1].cpu().max(-1)
+
+    pair_id_counts = 20
+    if topk_qids is not None:
+        plot_qids = []
+        for q in topk_qids:
+            if q not in plot_qids and len(plot_qids) < pair_id_counts :
+                plot_qids.append(q)
+    else:
+        plot_qids = list(range(pair_id_counts))
+    plot_num = pair_id_counts+1
+    _, axes = plt.subplots(1, plot_num, figsize=(9*plot_num, 7))
+    ######## plt boxes ##########
+    # axes[0].set_title(f"image_id={targets[idx]['image_id'].item()}")
+    axes[0].imshow(pil_img)
+    # colors = COLORS * 100
+    # for sc, l, (xmin, ymin, xmax, ymax), c in zip(box_scores, box_labels, boxes, colors):
+    #     if sc < 0.9: continue
+    #     axes[0].add_patch(plt.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, fill=False, color=c, linewidth=3))
+    #     text = f'{coco_obj_names[l]}({sc:0.2f})'
+    #     axes[0].text(xmin, ymin, text, fontsize=14, bbox=dict(facecolor='yellow', alpha=0.5))
+    axes[0].set_axis_off()
+
+    plot_qids.sort()
+    for aidx, pair_id in enumerate(plot_qids):
+        ax = axes[aidx+1]
+        ######## specific relation ##########
+        subj_id, obj_id = results['pred_rel_pairs'][idx][pair_id]
+        action_probs = results['pred_actions'][idx][pair_id].sigmoid().cpu()
+        if dataset == 'vcoco':
+            for k in range(len(action_probs)):
+                if k not in vcoco_valid_action_ids: action_probs[k] = -1
+        for k in range(len(action_probs)):
+            if k == 3: action_probs[k] = -1
+        action_scores, action_labels = action_probs.sort(descending=True)
+        # pair_action_label_names = '\n'.join([f"{action_label_names[action_labels[k]]} ({action_scores[k]: 0.2f})" for k in range(len(action_labels)) if k<3 or action_scores[k] > 0.5])
+        pair_action_label_names = f"qid={pair_id}:   " + ', '.join([f"{action_label_names[action_labels[k]]}({action_scores[k]: .2f})" for k in range(len(action_labels)) if k<3])
+
+        ######## img with cross attention ##########
+        featmap_scale = 32
+        fH, fW = int(np.ceil(masks.shape[1] / featmap_scale)), int(np.ceil(masks.shape[2] / featmap_scale))
+        fh, fw = h // featmap_scale + 1, w // featmap_scale + 1
+
+        #  visualization main view
+        length = int(attn_map.shape[-1] // 2)
+        if length == 850:
+            attn_map = attn_map[:, :, :length]
+            # attn_map = attn_map[:, :, length:]
+
+        pair_attention = attn_map[0, pair_id].view(fH, fW)[:fh, :fw]
+        pair_attention = (pair_attention - pair_attention.min()) / (pair_attention.max() - pair_attention.min())
+        pair_attention = F.interpolate(pair_attention.unsqueeze(0).unsqueeze(1), size=pil_img.shape[:-1], mode='bilinear').squeeze().cpu().numpy()
+
+        # show_img = pil_img * 0.3 + 0.7 * pair_attention[:,:,None]
+        ax.imshow(pair_attention, vmax=0.7)
+        ax.imshow(pil_img, alpha=0.45)
+
+        ######## relation pair boxes ##########
+        # head
+        hxmin, hymin, hxmax, hymax = boxes[subj_id]
+        # ax.add_patch(plt.Rectangle((hxmin, hymin), hxmax - hxmin, hymax - hymin, fill=False, color='red', linewidth=5))
+        # text = f'{coco_obj_names[box_labels[subj_id]]}_{subj_id}({box_scores[subj_id]: 0.2f})'
+        text1 = f'{coco_obj_names[box_labels[subj_id]]}'
+        # ax.text(hxmin, hymin, text, fontsize=22, bbox=dict(facecolor='red', alpha=0.3))
+        # ax.text(hxmin, hymin, text, fontsize=22, color='white')
+
+        # tail
+        txmin, tymin, txmax, tymax = boxes[obj_id]
+        # ax.add_patch(plt.Rectangle((txmin, tymin), txmax - txmin, tymax - tymin, fill=False, color='blue', linewidth=5))
+        # text = f'{coco_obj_names[box_labels[obj_id]]}_{obj_id}({box_scores[obj_id]: 0.2f})'
+        text2 = f'{coco_obj_names[box_labels[obj_id]]}'
+        # ax.text(txmin, tymin, text, fontsize=22, bbox=dict(facecolor='yellow', alpha=0.3))
+        # ax.text(txmin, tymin, text, fontsize=22, color='white')
+
+
+
+        # head -> tail arrow
+        ax1, ay1, ax2, ay2 = (hxmin+hxmax) / 2, (hymin+hymax) / 2, (txmin+txmax) / 2, (tymin+tymax) / 2
+        # axes[1].add_patch(patches.FancyArrow(ax1, ay1, ax2-ax1, ay2-ay1, color='blue', linewidth=5))
+        # axes[1].arrow(ax1, ay1, ax2-ax1, ay2-ay1, color='blue')
+        ax.plot(ax1, ay1, 'o', color='red', markersize=15)
+        # ax.arrow(ax1, ay1, ax2-ax1, ay2-ay1, head_width=10, head_length=10, color='orange', linewidth=8)
+
+        # ax.set_title(pair_action_label_names, fontsize=16)
+        ax.set_title(text1+"_to_"+text2, fontsize=16)
         ax.set_axis_off()
         print(pair_id)
 
@@ -643,15 +877,15 @@ def plot_hoi_results(samples, results, targets, args=None, idx=0):
 
     ####### top predicted hois ##########
     K = 100
-    tail_scores = box_scores[results['pred_rel_pairs'][idx][:, -1]]
+    tail_scores = box_scores[results['pred_rel_pairs'][idx][:, -1].to(box_scores.device)]
     verb_scores = results['pred_actions'][idx].sigmoid().cpu()
     hoi_scores = verb_scores * tail_scores.unsqueeze(1)
 
     # apply mask
-    tail_labels = box_labels[results['pred_rel_pairs'][idx][:, -1]]
-    tail_labels = [hico_obj_ids.index(x) for x in tail_labels] # to hico obj labels
-    mask = args.correct_mat.transpose(1,0).cpu()[tail_labels]
-    hoi_scores *= mask
+    # tail_labels = box_labels[results['pred_rel_pairs'][idx][:, -1]]
+    # tail_labels = [hico_obj_ids.index(x) for x in tail_labels] # to hico obj labels
+    # mask = args.correct_mat.transpose(1,0).cpu()[tail_labels]
+    # hoi_scores *= mask
 
     qnum, action_num = hoi_scores.shape
     _, sort_ids = hoi_scores.view(-1).sort(descending=True)
@@ -683,7 +917,7 @@ def plot_hoi_results(samples, results, targets, args=None, idx=0):
 
     # plt.gca().yaxis.set_label_position("right")
     # plt.ylabel(rel_strs, rotation=0, labelpad=140, fontsize=8, loc='top')\
-    plt.title(f"image_id={targets[idx]['id']}")
+    plt.title(f"image_id={targets[idx]['image_id']}")
     plt.show()
     print('plot_hoi_results')
     return topk_qids.tolist(), q_name_list

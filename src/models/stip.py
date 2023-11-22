@@ -214,6 +214,11 @@ class STIP(nn.Module):
 
             rel_mat = torch.zeros((num_nodes, num_nodes))
             rel_mat[human_instance_ids, ~bg_instance_ids] = 1 # subj is human, obj is not background
+            dynamic = False
+            if dynamic:
+                no_instance_ids = (probs[:, -1] > 1)
+                rel_mat[~no_instance_ids, ~human_instance_ids] = 0
+
             if self.args.dataset_file != 'vcoco': rel_mat.fill_diagonal_(0)
             if self.args.adaptive_relation_query_num:
                 if len(rel_mat.nonzero(as_tuple=False)) == 0: rel_mat[0,1] = 1

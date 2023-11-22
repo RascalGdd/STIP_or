@@ -280,18 +280,11 @@ def eval_rel_results(all_results, topk=100, do_val=True, do_vis=False):
             phr_mAP /= 14.
             print('weighted phr mAP: {:.2f}'.format(100 * w_phr_mAP))
             excel_str += ap_str
-            
-            # total: 0.4 x rel_mAP + 0.2 x R@50 + 0.4 x phr_mAP
-            final_score = 0.4 * rel_mAP + 0.2 * recalls[50] + 0.4 * phr_mAP
-            
-            # total: 0.4 x w_rel_mAP + 0.2 x R@50 + 0.4 x w_phr_mAP
+
+
             w_final_score = 0.4 * w_rel_mAP + 0.2 * recalls[50] + 0.4 * w_phr_mAP
             print('weighted final_score: {:.2f}'.format(100 * w_final_score))
-            
-            # get excel friendly string
-            # excel_str = '{:.2f}, {:.2f}, {:.2f}, {:.2f}, '.format(100 * recalls[50], 100 * w_rel_mAP, 100 * w_phr_mAP, 100 * w_final_score) + excel_str
-            # print('Excel-friendly format:')
-            # print(excel_str.strip()[:-1])
+
     
     #print('Saving topk dets...')
     # topk_dets_f = os.path.join(output_dir, 'rel_detections_topk_{}.pkl'.format(topk))
