@@ -305,25 +305,18 @@ def make_coco_transforms(image_set):
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
-    scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+    # scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
     if image_set == 'train':
         return T.Compose([
             T.RandomHorizontalFlip(),
             T.ColorJitter(.4, .4, .4),
-            T.RandomSelect(
-                T.RandomResize(scales, max_size=1333),
-                T.Compose([
-                    T.RandomResize([400, 500, 600]),
-                    # T.RandomSizeCrop(384, 600), # TODO: cropping causes that some boxes are dropped then no tensor in the relation part! What should we do?
-                    T.RandomResize(scales, max_size=1333),
-                ])
-            ),
+            T.RandomResize([1024], max_size=1800),
             normalize])
 
     if image_set == 'val' or "test" or "infer":
         return T.Compose([
-            T.RandomResize([800], max_size=1333),
+            T.RandomResize([1024], max_size=1800),
             normalize,
         ])
 

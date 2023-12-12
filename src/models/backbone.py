@@ -3,7 +3,7 @@
 Backbone modules.
 """
 from collections import OrderedDict
-
+from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -73,11 +73,12 @@ class BackboneBase(nn.Module):
                 return_layers = {'layer4': "0"}
                 self.strides = [8, 16, 32]
                 self.num_channels = num_channels
-        self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
-
+        # self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
+        self.body = backbone
 
     def forward(self, tensor_list: NestedTensor):
-        xs = self.body(tensor_list.tensors)
+        xs = OrderedDict()
+        xs['0'] = self.body(tensor_list.tensors)
         out: Dict[str, NestedTensor] = {}
         for name, x in xs.items():
             m = tensor_list.mask
@@ -93,9 +94,13 @@ class Backbone(BackboneBase):
                  train_backbone: bool,
                  return_interm_layers: bool,
                  dilation: bool):
-        backbone = getattr(torchvision.models, name)(
-            replace_stride_with_dilation=[False, False, dilation],
-            pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)
+        # backbone = getattr(torchvision.models, name)(
+        #     replace_stride_with_dilation=[False, False, dilation],
+        #     pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)
+        sam = sam_model_registry["vit_b"](checkpoint=r"D:\DD\SAM_checkpoint\sam_vit_b_01ec64.pth")
+        backbone = sam.image_encoder
+        for para in backbone.parameters():
+            para.requires_grad = False
         num_channels = 2048 if name in ('resnet18', 'resnet34') else 2048
         super().__init__(args, backbone, train_backbone, num_channels, return_interm_layers)
 
