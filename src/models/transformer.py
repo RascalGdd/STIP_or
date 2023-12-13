@@ -33,10 +33,10 @@ class Transformer(nn.Module):
                  return_intermediate_dec=False, multiview=False, pointfusion=False):
         super().__init__()
 
-        encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
-                                                dropout, activation, normalize_before)
-        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
-        self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
+        # encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
+        #                                         dropout, activation, normalize_before)
+        # encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+        # self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
 
         # encoder_layer_additional = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
         #                                         dropout, activation, normalize_before)
@@ -95,7 +95,10 @@ class Transformer(nn.Module):
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
 
         tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        # memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        memory = src
+
+
         # ################### visualiazation ###################
         # vis = memory.permute(1, 2, 0).view(bs, c, h, w)[:, :1, :, :][0].permute(1, 2, 0).detach().cpu().numpy()
         # plt.imshow(vis)
