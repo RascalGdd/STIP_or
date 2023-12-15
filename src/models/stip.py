@@ -15,6 +15,7 @@ import PIL
 from matplotlib import colormaps
 # from torchvision.transforms.functional import to_pil_image
 # from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
+import clip
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -24,6 +25,26 @@ class STIP(nn.Module):
         # * Instance Transformer ---------------
         self.detr = detr
         self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
+        self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
+        for para in self.clip_model.parameters():
+            para.requires_grad = False
+
+        combine_list = []
+        combine_list_features = []
+        obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human','human','human','human','human',]
+        verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+        for i in range(11):
+            for j in range(11):
+                pair_list = ["a scene of a " + obj_list[i] + " " + k + " " + obj_list[j] for k in verb_list]
+                combine_list.append(pair_list)
+                text_token = clip.tokenize(pair_list).to(self.args.device)
+                text_features = self.clip_model.encode_text(text_token)
+                combine_list_features.append(text_features)
+
+
+        # print(len(combine_list))
+        # asd
+
         if not args.train_detr:
             # if this flag is given, freeze the object detection related parameters of DETR
             for p in self.parameters():
@@ -398,12 +419,16 @@ class STIP(nn.Module):
                                                     pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
                                                     memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
 
+            # text_list =
+            # text_token = clip.tokenize(text_list).to(self.args.device)
+
             action_logits = self.action_embed(outs)
 
             pred_rel_pairs.append(sampled_rel_pairs)
             pred_actions.append(action_logits)
             pred_rel_exists.append(sampled_rel_pred_exists)
-
+        pred_rel_pairs_semantic = [[outputs_class[-1][0][:, :-1].argmax(-1)[k[0]], outputs_class[-1][0][:, :-1].argmax(-1)[k[1]]] for k in pred_rel_pairs[0]]
+        pred_rel_pairs_semantic_multiple = [(k[0]+1)*(k[1]+1) for k in pred_rel_pairs_semantic]
         hoi_recognition_time = time.time() - start_time
         out = {
             "pred_logits": outputs_class[-1],
