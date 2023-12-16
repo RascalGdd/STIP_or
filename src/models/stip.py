@@ -25,25 +25,39 @@ class STIP(nn.Module):
         # * Instance Transformer ---------------
         self.detr = detr
         self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
+        self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
+        self.text_proj = make_fc(512, 256)
         self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
         for para in self.clip_model.parameters():
             para.requires_grad = False
 
-        combine_list = []
-        combine_list_features = []
-        obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human','human','human','human','human',]
-        verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+        word_dict = {}
+        self.word_features = torch.zeros([150, 14, 512]).to(self.args.device)
+        self.obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human','human','human','human','human',]
+        self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
         for i in range(11):
             for j in range(11):
-                pair_list = ["a scene of a " + obj_list[i] + " " + k + " " + obj_list[j] for k in verb_list]
-                combine_list.append(pair_list)
-                text_token = clip.tokenize(pair_list).to(self.args.device)
+                # if i == j:
+                #     continue
+                wordpair_list = ["a scene of a " + self.obj_list[i] + " " + k + " " + self.obj_list[j] for k in self.verb_list]
+                text_token = clip.tokenize(wordpair_list).to(self.args.device)
                 text_features = self.clip_model.encode_text(text_token)
-                combine_list_features.append(text_features)
+                self.word_features[i*11+j] = text_features
 
 
-        # print(len(combine_list))
-        # asd
+
+                # key = self.obj_list[i] + "+" + self.obj_list[j]
+                # if key not in word_dict.keys():
+                #     word_dict[key] = pair_list
+                #     text_token = clip.tokenize(pair_list).to(self.args.device)
+                #     text_features = self.clip_model.encode_text(text_token)
+                #     word_features_dict[key] = text_features
+
+
+                # combine_list.append(pair_list)
+                # text_token = clip.tokenize(pair_list).to(self.args.device)
+                # text_features = self.clip_model.encode_text(text_token)
+                # combine_list_features.append(text_features)
 
         if not args.train_detr:
             # if this flag is given, freeze the object detection related parameters of DETR
@@ -422,13 +436,20 @@ class STIP(nn.Module):
             # text_list =
             # text_token = clip.tokenize(text_list).to(self.args.device)
 
+            outs_nointermediate = outs[-1].permute(1, 0, 2)
+            sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
+            obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
+            total_index = sub_index * 10 + obj_index
+            text_features = self.word_features[total_index]
+            text_features = self.text_proj(text_features).permute(1, 0, 2)
+            text_atten_output, text_atten_weights = self.text_attention(outs_nointermediate, text_features, text_features)
+
             action_logits = self.action_embed(outs)
 
             pred_rel_pairs.append(sampled_rel_pairs)
             pred_actions.append(action_logits)
             pred_rel_exists.append(sampled_rel_pred_exists)
-        pred_rel_pairs_semantic = [[outputs_class[-1][0][:, :-1].argmax(-1)[k[0]], outputs_class[-1][0][:, :-1].argmax(-1)[k[1]]] for k in pred_rel_pairs[0]]
-        pred_rel_pairs_semantic_multiple = [(k[0]+1)*(k[1]+1) for k in pred_rel_pairs_semantic]
+
         hoi_recognition_time = time.time() - start_time
         out = {
             "pred_logits": outputs_class[-1],
