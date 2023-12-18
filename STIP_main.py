@@ -322,6 +322,10 @@ if __name__ == '__main__':
     parser.add_argument('--closeto', default=0.12, type=float)
     parser.add_argument('--num_feature_levels', default=1, type=int)
 
+    # CLIP arguments
+    parser.add_argument('--clip1', action='store_true', default=False)
+    parser.add_argument('--clip2', action='store_true', default=False)
+
 
     args = parser.parse_args()
     args.STIP_relation_head = True

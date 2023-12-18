@@ -25,39 +25,32 @@ class STIP(nn.Module):
         # * Instance Transformer ---------------
         self.detr = detr
         self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
-        self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
-        self.text_proj = make_fc(512, 256)
-        self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
-        for para in self.clip_model.parameters():
-            para.requires_grad = False
 
-        word_dict = {}
-        self.word_features = torch.zeros([150, 14, 512]).to(self.args.device)
-        self.obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human','human','human','human','human',]
-        self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-        for i in range(11):
-            for j in range(11):
-                # if i == j:
-                #     continue
-                wordpair_list = ["a scene of a " + self.obj_list[i] + " " + k + " " + self.obj_list[j] for k in self.verb_list]
+        if self.args.clip1 or self.args.clip2:
+            self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
+            self.text_proj = make_fc(512, 256)
+            self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
+            for para in self.clip_model.parameters():
+                para.requires_grad = False
+
+            if self.args.clip1:
+                self.word_features = torch.zeros([150, 14, 512]).to(self.args.device)
+                self.obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human','human','human','human','human',]
+                self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+                for i in range(11):
+                    for j in range(11):
+                        wordpair_list = ["a scene of a " + self.obj_list[i] + " " + k + " " + self.obj_list[j] for k in self.verb_list]
+                        text_token = clip.tokenize(wordpair_list).to(self.args.device)
+                        encode_features = self.clip_model.encode_text(text_token)
+                        self.word_features[i*11+j] = encode_features
+            else:
+                self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+                                  "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+                wordpair_list = ["a scene of " + k for k in self.verb_list]
                 text_token = clip.tokenize(wordpair_list).to(self.args.device)
-                text_features = self.clip_model.encode_text(text_token)
-                self.word_features[i*11+j] = text_features
+                encode_features = self.clip_model.encode_text(text_token)
+                self.word_features = encode_features.to(torch.float32)
 
-
-
-                # key = self.obj_list[i] + "+" + self.obj_list[j]
-                # if key not in word_dict.keys():
-                #     word_dict[key] = pair_list
-                #     text_token = clip.tokenize(pair_list).to(self.args.device)
-                #     text_features = self.clip_model.encode_text(text_token)
-                #     word_features_dict[key] = text_features
-
-
-                # combine_list.append(pair_list)
-                # text_token = clip.tokenize(pair_list).to(self.args.device)
-                # text_features = self.clip_model.encode_text(text_token)
-                # combine_list_features.append(text_features)
 
         if not args.train_detr:
             # if this flag is given, freeze the object detection related parameters of DETR
@@ -433,16 +426,31 @@ class STIP(nn.Module):
                                                     pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
                                                     memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
 
-            # text_list =
-            # text_token = clip.tokenize(text_list).to(self.args.device)
+            if self.args.clip1:
+                outs_intermediate = []
+                for i in range(outs.shape[0]):
+                    outs_nointermediate = outs[i].permute(1, 0, 2)
+                    sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
+                    obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
+                    total_index = sub_index * 10 + obj_index
+                    text_features = self.word_features[total_index]
+                    text_features = self.text_proj(text_features).permute(1, 0, 2)
+                    text_atten_output, text_atten_weights = self.text_attention(outs_nointermediate, text_features, text_features)
+                    outs_intermediate.append(text_atten_output.permute(1, 0, 2).unsqueeze(0))
+                outs = torch.cat(outs_intermediate, dim=0)
 
-            outs_nointermediate = outs[-1].permute(1, 0, 2)
-            sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
-            obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
-            total_index = sub_index * 10 + obj_index
-            text_features = self.word_features[total_index]
-            text_features = self.text_proj(text_features).permute(1, 0, 2)
-            text_atten_output, text_atten_weights = self.text_attention(outs_nointermediate, text_features, text_features)
+            if self.args.clip2:
+                outs_intermediate = []
+                for i in range(outs.shape[0]):
+                    outs_nointermediate = outs[i]
+                    # sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
+                    # obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
+                    # total_index = sub_index * 10 + obj_index
+                    text_features = self.word_features.unsqueeze(1)
+                    text_features = self.text_proj(text_features)
+                    text_atten_output, text_atten_weights = self.text_attention(outs_nointermediate, text_features, text_features)
+                    outs_intermediate.append(text_atten_output.unsqueeze(0))
+                outs = torch.cat(outs_intermediate, dim=0)
 
             action_logits = self.action_embed(outs)
 
