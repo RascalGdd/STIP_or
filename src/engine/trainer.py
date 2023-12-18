@@ -25,7 +25,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     space_fmt = str(len(str(max_epoch)))
     header = 'Epoch [{start_epoch: >{fill}}/{end_epoch}]'.format(start_epoch=epoch+1, end_epoch=max_epoch, fill=space_fmt)
     # print_freq = int(len(data_loader)/5)
-    print_freq = 50
+    print_freq = 5000
 
     print(f"\n>>> Epoch #{(epoch+1)}")
     for samples, targets, multiview_samples, points, video_samples in metric_logger.log_every(data_loader, print_freq, header):
