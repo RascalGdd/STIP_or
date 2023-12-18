@@ -127,6 +127,14 @@ class MultiView_CocoDetection(VisionDataset):
         path_mainview = self.coco.loadImgs(id)[0]["file_name"]
         return [Image.open(os.path.join(self.root, path_mainview.split('.')[0] + '_view' + str(view) + '.' + path_mainview.split('.')[1])).convert("RGB") for view in self.views]
 
+    def _load_image_video(self, id: int):
+        if id-1 < min(self.ids) or id+1 > max(self.ids):
+            return None
+        else:
+            video_ids = [id-1, id+1]
+            path_video = [self.coco.loadImgs(id)[0]["file_name"] for id in video_ids]
+            return [Image.open(os.path.join(self.root, path)).convert("RGB") for path in path_video]
+
 
     def _load_target(self, id: int) -> List[Any]:
         return self.coco.loadAnns(self.coco.getAnnIds(id))
@@ -136,13 +144,15 @@ class MultiView_CocoDetection(VisionDataset):
         image = self._load_image(id)
         target = self._load_target(id)
         images_multiview = self._load_image_multiview(id)
+        images_video = self._load_image_video(id)
         points = self._load_points(id)
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
             images_multiview = [self.transforms(i) for i in images_multiview]
+            images_video = [self.transforms(j) for j in images_video]
 
-        return image, target, images_multiview, points
+        return image, target, images_multiview, points, images_video
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -167,12 +177,12 @@ class CocoDetection(MultiView_CocoDetection):
         self.rel_categories = all_rels['rel_categories']
 
     def __getitem__(self, idx):
-        img, target, images_multiview, points = super(CocoDetection, self).__getitem__(idx)
+        img, target, images_multiview, points, images_video = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]
         while not self.rel_annotations[str(image_id)]:
             idx = random.randint(0, len(self.ids)-1)
             image_id = self.ids[idx]
-            img, target, images_multiview, points = super(CocoDetection, self).__getitem__(idx)
+            img, target, images_multiview, points, images_video = super(CocoDetection, self).__getitem__(idx)
 
         rel_target = self.rel_annotations[str(image_id)]
 
@@ -180,7 +190,7 @@ class CocoDetection(MultiView_CocoDetection):
 
         img, target = self.prepare(img, target)
         if self._transforms is not None:
-            img, target, images_multiview = self._transforms(img, target, images_multiview)
+            img, target, images_multiview, images_video = self._transforms(img, target, images_multiview, images_video)
         target["hoi_labels"] = one_hot(torch.cat([target["rel_annotations"][:, 2]]), num_classes=self.num_actions).type(torch.float32)
         target["obj_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 1]]])
         target["sub_labels"] = torch.cat([target['labels'][target['rel_annotations'][:, 0]]])
@@ -189,7 +199,6 @@ class CocoDetection(MultiView_CocoDetection):
         target['sub_boxes'] = sub_boxes
         target['obj_boxes'] = obj_boxes
         target['gt_triplet'] = torch.cat([target["sub_labels"].unsqueeze(-1), target["obj_labels"].unsqueeze(-1), torch.cat([target["rel_annotations"][:, 2]]).unsqueeze(-1)], dim=1)
-
 
 
         # relation map
@@ -205,9 +214,10 @@ class CocoDetection(MultiView_CocoDetection):
         target['relation_map'] = relation_map
         target['hois'] = relation_map.nonzero(as_tuple=False)
 
+        if not images_video:
+            images_video = [torch.zeros_like(img), torch.zeros_like(img)]
 
-
-        return img, target, images_multiview, points
+        return img, target, images_multiview, points, images_video
 
 
 def convert_coco_poly_to_mask(segmentations, height, width):

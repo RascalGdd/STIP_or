@@ -85,9 +85,9 @@ class STIP(nn.Module):
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
 
-    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None):
-        if isinstance(samples, (list, torch.Tensor)):
-            samples = nested_tensor_from_tensor_list(samples)
+    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None):
+        # if isinstance(samples, (list, torch.Tensor)):
+        #     samples = nested_tensor_from_tensor_list(samples)
 
         # ################### visualiazation ###################
         # img_tensor = samples.tensors[0].permute(1, 2, 0).detach().cpu().numpy()
@@ -101,6 +101,7 @@ class STIP(nn.Module):
         # >>>>>>>>>>>>  BACKBONE LAYERS  <<<<<<<<<<<<<<<
         features, pos = self.detr.backbone(samples)
         features_multiview, pos_multiview = self.detr.backbone(multiview_samples)
+        features_video, pos_video = self.detr.backbone(video_samples)
         bs = features[-1].tensors.shape[0]
 
         if self.args.num_feature_levels > 1:

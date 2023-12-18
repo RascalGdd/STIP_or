@@ -13,10 +13,15 @@ from src.util.box_ops import box_xyxy_to_cxcywh
 from src.util.misc import interpolate
 
 
-def crop(image, target, region, multiview_images=None):
+def crop(image, target, region, multiview_images=None, video_images=None):
     cropped_image = F.crop(image, *region)
     if multiview_images:
         cropped_multiview_images = [F.crop(k, *region) for k in multiview_images]
+    if video_images:
+        cropped_video_images = [F.crop(k, *region) for k in video_images]
+    else:
+        cropped_video_images = None
+
 
     target = target.copy()
     i, j, h, w = region
@@ -116,15 +121,19 @@ def crop(image, target, region, multiview_images=None):
         for pair_field in pair_fields:
             target[pair_field] = target[pair_field][keep_h]
     if multiview_images:
-        return cropped_image, target, cropped_multiview_images
+        return cropped_image, target, cropped_multiview_images, cropped_video_images
     else:
         return cropped_image, target
 
 
-def hflip(image, target, multiview_images=None):
+def hflip(image, target, multiview_images=None, video_images=None):
     flipped_image = F.hflip(image)
     if multiview_images:
         flipped_multiview_images = [F.hflip(k) for k in multiview_images]
+    if video_images:
+        flipped_video_images = [F.hflip(k) for k in video_images]
+    else:
+        flipped_video_images = None
 
     w, h = image.size
 
@@ -154,12 +163,12 @@ def hflip(image, target, multiview_images=None):
     if "masks" in target:
         target['masks'] = target['masks'].flip(-1)
     if multiview_images:
-        return flipped_image, target, flipped_multiview_images
+        return flipped_image, target, flipped_multiview_images, flipped_video_images
     else:
         return flipped_image, target
 
 
-def resize(image, target, size, max_size=None, multiview_images=None):
+def resize(image, target, size, max_size=None, multiview_images=None, video_images=None):
     # size can be min_size (scalar) or (w, h) tuple
 
     def get_size_with_aspect_ratio(image_size, size, max_size=None):
@@ -192,9 +201,13 @@ def resize(image, target, size, max_size=None, multiview_images=None):
     rescaled_image = F.resize(image, size)
     if multiview_images:
         rescaled_multiview_images = [F.resize(k, size) for k in multiview_images]
+    if video_images:
+        rescaled_video_images = [F.resize(k, size) for k in video_images]
+    else:
+        rescaled_video_images = None
 
     if target is None:
-        return rescaled_image, None, rescaled_multiview_images
+        return rescaled_image, None, rescaled_multiview_images, rescaled_video_images
 
     ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(rescaled_image.size, image.size))
     ratio_width, ratio_height = ratios
@@ -230,16 +243,20 @@ def resize(image, target, size, max_size=None, multiview_images=None):
         target['masks'] = interpolate(
             target['masks'][:, None].float(), size, mode="nearest")[:, 0] > 0.5
     if multiview_images:
-        return rescaled_image, target, rescaled_multiview_images
+        return rescaled_image, target, rescaled_multiview_images, rescaled_video_images
     else:
         return rescaled_image, target
 
 
-def pad(image, target, padding, multiview_images=None):
+def pad(image, target, padding, multiview_images=None, video_images=None):
     # assumes that we only pad on the bottom right corners
     padded_image = F.pad(image, (0, 0, padding[0], padding[1]))
     if multiview_images:
         padded_multiview_images = [F.pad(k, (0, 0, padding[0], padding[1])) for k in multiview_images]
+    if video_images:
+        padded_video_images = [F.pad(k, (0, 0, padding[0], padding[1])) for k in video_images]
+    else:
+        padded_video_images = None
 
     if target is None:
         return padded_image, None
@@ -249,7 +266,7 @@ def pad(image, target, padding, multiview_images=None):
     if "masks" in target:
         target['masks'] = torch.nn.functional.pad(target['masks'], (0, padding[0], 0, padding[1]))
     if multiview_images:
-        return padded_image, target, padded_multiview_images
+        return padded_image, target, padded_multiview_images, padded_video_images
     else:
         return padded_image, target
 
@@ -291,10 +308,10 @@ class RandomHorizontalFlip(object):
     def __init__(self, p=0.5):
         self.p = p
 
-    def __call__(self, img, target, multiview_images=None):
+    def __call__(self, img, target, multiview_images=None, video_images=None):
         if random.random() < self.p:
-            return hflip(img, target, multiview_images)
-        return img, target, multiview_images
+            return hflip(img, target, multiview_images, video_images)
+        return img, target, multiview_images, video_images
 
 
 class RandomResize(object):
@@ -303,19 +320,19 @@ class RandomResize(object):
         self.sizes = sizes
         self.max_size = max_size
 
-    def __call__(self, img, target=None, multiview_images=None):
+    def __call__(self, img, target=None, multiview_images=None, video_images=None):
         size = random.choice(self.sizes)
-        return resize(img, target, size, self.max_size, multiview_images)
+        return resize(img, target, size, self.max_size, multiview_images, video_images)
 
 
 class RandomPad(object):
     def __init__(self, max_pad):
         self.max_pad = max_pad
 
-    def __call__(self, img, target, multiview_images=None):
+    def __call__(self, img, target, multiview_images=None, video_images=None):
         pad_x = random.randint(0, self.max_pad)
         pad_y = random.randint(0, self.max_pad)
-        return pad(img, target, (pad_x, pad_y), multiview_images)
+        return pad(img, target, (pad_x, pad_y), multiview_images, video_images)
 
 
 class RandomSelect(object):
@@ -329,16 +346,16 @@ class RandomSelect(object):
         self.transforms2 = transforms2
         self.p = p
 
-    def __call__(self, img, target, multiview_images):
+    def __call__(self, img, target, multiview_images, video_images):
         if random.random() < self.p:
-            return self.transforms1(img, target, multiview_images)
-        return self.transforms2(img, target, multiview_images)
+            return self.transforms1(img, target, multiview_images, video_images)
+        return self.transforms2(img, target, multiview_images, video_images)
 
 
 class ToTensor(object):
-    def __call__(self, img, target, multiview_images):
+    def __call__(self, img, target, multiview_images, video_images):
         if multiview_images:
-            return F.to_tensor(img), target, [F.to_tensor(k) for k in multiview_images]
+            return F.to_tensor(img), target, [F.to_tensor(k) for k in multiview_images], None if not video_images else [F.to_tensor(j) for j in video_images]
         else:
             return F.to_tensor(img), target
 
@@ -357,12 +374,16 @@ class Normalize(object):
         self.mean = mean
         self.std = std
 
-    def __call__(self, image, target=None, multiview_images=None):
+    def __call__(self, image, target=None, multiview_images=None, video_images=None):
         image = F.normalize(image, mean=self.mean, std=self.std)
         if multiview_images:
             multiview_images = [F.normalize(k, mean=self.mean, std=self.std) for k in multiview_images]
+        if video_images:
+            video_images = [F.normalize(k, mean=self.mean, std=self.std) for k in video_images]
+        else:
+            video_images = None
         if target is None:
-            return image, None, multiview_images
+            return image, None, multiview_images, video_images
         target = target.copy()
         h, w = image.shape[-2:]
         if "boxes" in target:
@@ -385,25 +406,25 @@ class Normalize(object):
             pair_boxes = torch.cat([hboxes, oboxes], dim=-1)
             target["pair_boxes"] = pair_boxes
 
-        return image, target, multiview_images
+        return image, target, multiview_images, video_images
 
 
 class ColorJitter(object):
     def __init__(self, brightness=0, contrast=0, saturatio=0, hue=0):
         self.color_jitter = T.ColorJitter(brightness, contrast, saturatio, hue)
 
-    def __call__(self, img, target, multiview_images):
-        return self.color_jitter(img), target, [self.color_jitter(k) for k in multiview_images]
+    def __call__(self, img, target, multiview_images, video_images):
+        return self.color_jitter(img), target, [self.color_jitter(k) for k in multiview_images], None if not video_images else [self.color_jitter(j) for j in video_images]
 
 
 class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, image, target, multiview_images):
+    def __call__(self, image, target, multiview_images, video_images):
         for t in self.transforms:
-            image, target, multiview_images = t(image, target, multiview_images)
-        return image, target, multiview_images
+            image, target, multiview_images, video_images = t(image, target, multiview_images, video_images)
+        return image, target, multiview_images, video_images
 
     def __repr__(self):
         format_string = self.__class__.__name__ + "("
