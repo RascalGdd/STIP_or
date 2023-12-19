@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.util.misc import NestedTensor, nested_tensor_from_tensor_list
 from torchvision.ops import roi_align
-from .transformer import TransformerDecoderLayer, TransformerDecoder
+from .transformer import TransformerDecoderLayer, TransformerDecoder, TransformerDecoderLayer_multiview
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
@@ -83,6 +83,12 @@ class STIP(nn.Module):
             decoder_layer = TransformerDecoderLayer(d_model=self.args.hidden_dim, nhead=self.args.hoi_nheads)
             decoder_norm = nn.LayerNorm(self.args.hidden_dim)
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
+
+            video_decoder_layer = TransformerDecoderLayer_multiview(self.args.hidden_dim, self.args.hoi_nheads)
+            video_decoder_norm = nn.LayerNorm(self.args.hidden_dim)
+            self.video_attention = TransformerDecoder(video_decoder_layer, 2, video_decoder_norm, return_intermediate=False)
+
+
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None):
@@ -185,6 +191,7 @@ class STIP(nn.Module):
         pred_rel_exists, pred_rel_pairs, pred_actions = [], [], []
         memory_input, memory_input_mask = features[-1].decompose()
         memory_input_multiview, memory_input_mask_multiview = features_multiview[-1].decompose()
+        memory_input_video, memory_input_mask_video = features_video[-1].decompose()
         memory_pos = pos[-1] if self.args.num_feature_levels == 1 else pos[-2]
         memory_pos_multiview = pos_multiview[-1]
         if self.args.relation_feature_map_from == 'backbone':
@@ -202,6 +209,9 @@ class STIP(nn.Module):
                     memory_input_multiview.permute(0, 2, 3, 1).contiguous()).permute(0, 3, 1, 2).contiguous()
             memory_input = self.memory_input_proj(memory_input)
             memory_input_multiview = self.memory_input_proj(memory_input_multiview)
+            memory_input_video = self.memory_input_proj(memory_input_video)
+
+
 
         for imgid in range(bs):
             # >>>>>>>>>>>> relation proposal <<<<<<<<<<<<<<<
@@ -326,8 +336,13 @@ class STIP(nn.Module):
                     ).flatten(start_dim=1, end_dim=2).unsqueeze(2) # (#query, #memory, batch size, dim)
 
 
+                # video fusion
+
+                memory_input_withvideo = self.video_attention(memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                                    memory_input_video.split(2, dim=0)[imgid].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1))[0]
+
                 if self.args.use_multiviewfusion_last_all:
-                    memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                    memory_input_last = torch.cat([memory_input_withvideo,
                                               memory_input_multiview.split(3, dim=0)[imgid].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
                                                    memory_input_mask_multiview.split(3, dim=0)[imgid].flatten(
@@ -348,7 +363,7 @@ class STIP(nn.Module):
 
 
                 elif self.args.use_multiviewfusion_last_view2:
-                    memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                    memory_input_last = torch.cat([memory_input_withvideo,
                                               memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1),memory_input_multiview[0::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
                                                    memory_input_mask_multiview[2::3][imgid:imgid + 1].flatten(
@@ -369,7 +384,7 @@ class STIP(nn.Module):
                                                     memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
 
                 elif self.args.use_multiviewfusion_last:
-                    memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                    memory_input_last = torch.cat([memory_input_withvideo,
                                               memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
                                                    memory_input_mask_multiview[2::3][imgid:imgid + 1].flatten(
