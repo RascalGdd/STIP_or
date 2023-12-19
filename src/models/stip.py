@@ -440,7 +440,7 @@ class STIP(nn.Module):
                     total_index = sub_index * 10 + obj_index
                     text_features = self.word_features[total_index]
                     text_features = self.text_proj(text_features).permute(1, 0, 2)
-                    text_atten_output = self.text_attention(outs_nointermediate, text_features, text_features)[0]
+                    text_atten_output = self.text_attention(outs_nointermediate, text_features)[0]
                     outs_intermediate.append(text_atten_output.permute(1, 0, 2).unsqueeze(0))
                 outs = torch.cat(outs_intermediate, dim=0)
 
@@ -448,12 +448,9 @@ class STIP(nn.Module):
                 outs_intermediate = []
                 for i in range(outs.shape[0]):
                     outs_nointermediate = outs[i]
-                    # sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
-                    # obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
-                    # total_index = sub_index * 10 + obj_index
                     text_features = self.word_features.unsqueeze(1)
                     text_features = self.text_proj(text_features)
-                    text_atten_output = self.text_attention(outs_nointermediate, text_features, text_features)[0]
+                    text_atten_output = self.text_attention(outs_nointermediate, text_features)[0]
                     outs_intermediate.append(text_atten_output.unsqueeze(0))
                 outs = torch.cat(outs_intermediate, dim=0)
 
