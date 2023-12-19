@@ -947,7 +947,7 @@ class RelationFeatureExtractor(nn.Module):
                 nn.ReLU(inplace=True),
             ) # reduce channel size before pooling
             self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
-            fusion_dim += union_out_dim * 2
+            fusion_dim += union_out_dim
 
         if args.use_view6:
             out_ch, union_out_dim = 256, 256
@@ -957,6 +957,10 @@ class RelationFeatureExtractor(nn.Module):
             ) # reduce channel size before pooling
             self.visual_proj_view6 = make_fc(out_ch * (resolution**2), union_out_dim)
             fusion_dim += union_out_dim
+
+        unionvideo_decoder_layer = TransformerDecoderLayer_multiview(self.args.hidden_dim, self.args.hoi_nheads)
+        unionvideo_decoder_norm = nn.LayerNorm(self.args.hidden_dim)
+        self.unionvideo_attention = TransformerDecoder(unionvideo_decoder_layer, 2, unionvideo_decoder_norm, return_intermediate=False)
 
         # fusion
         self.fusion_fc = nn.Sequential(
@@ -1020,9 +1024,12 @@ class RelationFeatureExtractor(nn.Module):
             union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1))
             union_visual_feats_video = [roi_align(proj_feature_video.split(1)[0], scaled_union_boxes, output_size=self.resolution, sampling_ratio=2), roi_align(proj_feature_video.split(1)[1], scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)]
             union_visual_feats_video = [self.visual_proj(k.flatten(start_dim=1)) for k in union_visual_feats_video]
-            union_visual_feats_video = torch.cat(union_visual_feats_video, dim=-1)
-            # relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
-            relation_feats = torch.cat([relation_feats, union_visual_feats_video], dim=-1)
+            union_visual_feats_video = torch.cat(union_visual_feats_video, dim=0)
+            union_visual_feats = self.unionvideo_attention(union_visual_feats.unsqueeze(1), union_visual_feats_video.unsqueeze(1))[0].squeeze(1)
+            relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+
+
+            # relation_feats = torch.cat([relation_feats, union_visual_feats_video], dim=-1)
 
         if self.args.use_view6:
             # H, W = features.tensors.shape[-2:] # stacked image size
