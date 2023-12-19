@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.util.misc import NestedTensor, nested_tensor_from_tensor_list
 from torchvision.ops import roi_align
-from .transformer import TransformerDecoderLayer, TransformerDecoder
+from .transformer import TransformerDecoderLayer, TransformerDecoder, TransformerDecoderLayer_multiview
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,7 +27,7 @@ class STIP(nn.Module):
         self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
 
         if self.args.clip1 or self.args.clip2:
-            self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
+            # self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
             self.text_proj = make_fc(512, 256)
             self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
             for para in self.clip_model.parameters():
@@ -111,6 +111,11 @@ class STIP(nn.Module):
             decoder_layer = TransformerDecoderLayer(d_model=self.args.hidden_dim, nhead=self.args.hoi_nheads)
             decoder_norm = nn.LayerNorm(self.args.hidden_dim)
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
+
+            text_decoder_layer = TransformerDecoderLayer_multiview(self.args.hidden_dim, self.args.hoi_nheads)
+            text_decoder_norm = nn.LayerNorm(self.args.hidden_dim)
+            self.text_attention = TransformerDecoder(text_decoder_layer, 2, text_decoder_norm, return_intermediate=False)
+
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None):
@@ -435,7 +440,7 @@ class STIP(nn.Module):
                     total_index = sub_index * 10 + obj_index
                     text_features = self.word_features[total_index]
                     text_features = self.text_proj(text_features).permute(1, 0, 2)
-                    text_atten_output, text_atten_weights = self.text_attention(outs_nointermediate, text_features, text_features)
+                    text_atten_output = self.text_attention(outs_nointermediate, text_features, text_features)[0]
                     outs_intermediate.append(text_atten_output.permute(1, 0, 2).unsqueeze(0))
                 outs = torch.cat(outs_intermediate, dim=0)
 
@@ -448,7 +453,7 @@ class STIP(nn.Module):
                     # total_index = sub_index * 10 + obj_index
                     text_features = self.word_features.unsqueeze(1)
                     text_features = self.text_proj(text_features)
-                    text_atten_output, text_atten_weights = self.text_attention(outs_nointermediate, text_features, text_features)
+                    text_atten_output = self.text_attention(outs_nointermediate, text_features, text_features)[0]
                     outs_intermediate.append(text_atten_output.unsqueeze(0))
                 outs = torch.cat(outs_intermediate, dim=0)
 
