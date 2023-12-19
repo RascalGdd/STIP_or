@@ -197,6 +197,7 @@ class STIP(nn.Module):
         if self.args.relation_feature_map_from == 'backbone':
             relation_feature_map = features[-1]
             relation_feature_map_multiview = features_multiview[-1]
+            relation_feature_map_video = features_video[-1]
         elif self.args.relation_feature_map_from == 'detr_encoder':
             relation_feature_map = NestedTensor(detr_encoder_outs, memory_input_mask)
             relation_feature_map_multiview = NestedTensor(multiview_encoder_outs, memory_input_mask_multiview)
@@ -242,7 +243,7 @@ class STIP(nn.Module):
                     # hard negative sampling
                     all_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs], dim=0)
                     gt_pair_count = len(gt_rel_pairs[imgid])
-                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview, features_video=relation_feature_map_video)
                     p_relation_exist_logits = self.relation_proposal_mlp(all_rel_reps)
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
@@ -262,7 +263,7 @@ class STIP(nn.Module):
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
                 rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device)
-                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview, features_video=relation_feature_map_video)
                 p_relation_exist_logits = self.relation_proposal_mlp(rel_reps)
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
@@ -946,7 +947,7 @@ class RelationFeatureExtractor(nn.Module):
                 nn.ReLU(inplace=True),
             ) # reduce channel size before pooling
             self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
-            fusion_dim += union_out_dim
+            fusion_dim += union_out_dim * 2
 
         if args.use_view6:
             out_ch, union_out_dim = 256, 256
@@ -963,7 +964,7 @@ class RelationFeatureExtractor(nn.Module):
             make_fc(out_dim, out_dim), nn.ReLU()
         )
 
-    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None):
+    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None, features_video=None):
         """pool feature for boxes on one image
             features: dxhxw
             boxes: Nx4 (cx_cy_wh, nomalized to 0-1)
@@ -1008,6 +1009,7 @@ class RelationFeatureExtractor(nn.Module):
             # H, W = features.tensors.shape[-2:] # stacked image size
             h, w = (~features.mask[idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
             proj_feature = self.input_proj(features.tensors[idx:idx+1])
+            proj_feature_video = self.input_proj(features_video.tensors.split(2)[idx])
             scaled_union_boxes = torch.cat(
                 [
                     torch.zeros((len(union_boxes),1)).to(device=union_boxes.device),
@@ -1016,7 +1018,11 @@ class RelationFeatureExtractor(nn.Module):
             )
             union_visual_feats = roi_align(proj_feature, scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
             union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1))
-            relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+            union_visual_feats_video = [roi_align(proj_feature_video.split(1)[0], scaled_union_boxes, output_size=self.resolution, sampling_ratio=2), roi_align(proj_feature_video.split(1)[1], scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)]
+            union_visual_feats_video = [self.visual_proj(k.flatten(start_dim=1)) for k in union_visual_feats_video]
+            union_visual_feats_video = torch.cat(union_visual_feats_video, dim=-1)
+            # relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+            relation_feats = torch.cat([relation_feats, union_visual_feats_video], dim=-1)
 
         if self.args.use_view6:
             # H, W = features.tensors.shape[-2:] # stacked image size
