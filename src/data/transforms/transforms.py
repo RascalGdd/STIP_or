@@ -183,11 +183,11 @@ def resize(image, target, size, max_size=None, multiview_images=None):
         return (oh, ow)
 
     def get_size(image_size, size, max_size=None):
-        if isinstance(size, (list, tuple)):
-            return size[::-1]
-        else:
+        # if isinstance(size, (list, tuple)):
+        #     return size[::-1]
+        # else:
             # return get_size_with_aspect_ratio(image_size, size, max_size)
-            return [1024, 1024]
+        return [1024, 1024]
 
     size = get_size(image.size, size, max_size)
     rescaled_image = F.resize(image, size)
