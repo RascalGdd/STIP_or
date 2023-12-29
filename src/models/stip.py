@@ -34,22 +34,27 @@ class STIP(nn.Module):
                 para.requires_grad = False
 
             if self.args.clip1:
-                self.word_features = torch.zeros([150, 14, 512]).to(self.args.device)
-                self.obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human','human','human','human','human',]
+                self.union_clip_proj = make_fc(256, 512)
+                self.obj_list = ['anesthesia_equipment','operating_table','instrument_table','secondary_table','instrument','Patient','human']
                 self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering", "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-                for i in range(11):
-                    for j in range(11):
+                self.obj_list_length = len(self.obj_list)
+                self.word_features_spo = torch.zeros([self.obj_list_length**2, 14, 512]).to(self.args.device)
+                for i in range(self.obj_list_length):
+                    for j in range(self.obj_list_length):
                         wordpair_list = ["a scene of a " + self.obj_list[i] + " " + k + " " + self.obj_list[j] for k in self.verb_list]
                         text_token = clip.tokenize(wordpair_list).to(self.args.device)
                         encode_features = self.clip_model.encode_text(text_token)
-                        self.word_features[i*11+j] = encode_features
-            else:
+                        self.word_features_spo[i*self.obj_list_length+j] = encode_features
+                self.word_features_spo = nn.Parameter(self.word_features_spo)
+                self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
+            if self.args.clip2:
                 self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
                                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
                 wordpair_list = ["a scene of " + k for k in self.verb_list]
                 text_token = clip.tokenize(wordpair_list).to(self.args.device)
                 encode_features = self.clip_model.encode_text(text_token)
-                self.word_features = encode_features.to(torch.float32)
+                self.word_features = nn.Parameter(encode_features.to(torch.float32))
 
 
         if not args.train_detr:
@@ -264,7 +269,15 @@ class STIP(nn.Module):
                     # hard negative sampling
                     all_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs], dim=0)
                     gt_pair_count = len(gt_rel_pairs[imgid])
-                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                    if self.args.clip1:
+                        all_rel_reps, union_feats = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map,
+                                                                              outputs_coord[-1, imgid].detach(),
+                                                                              inst_repr[imgid],
+                                                                              obj_label_logits=outputs_class[-1, imgid],
+                                                                              idx=imgid,
+                                                                              features_multiview=relation_feature_map_multiview)
+                    else:
+                        all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
                     p_relation_exist_logits = self.relation_proposal_mlp(all_rel_reps)
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
@@ -274,6 +287,8 @@ class STIP(nn.Module):
 
                     sampled_rel_pairs = all_pairs[sampled_rel_inds]
                     sampled_rel_reps = all_rel_reps[sampled_rel_inds]
+                    if self.args.clip1:
+                        sampled_union_feats = union_feats[sampled_rel_inds]
                     sampled_rel_pred_exists = p_relation_exist_logits.squeeze(1)[sampled_rel_inds]
 
                 else:
@@ -284,7 +299,15 @@ class STIP(nn.Module):
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
                 rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device)
-                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                if self.args.clip1:
+                    rel_reps, union_feats = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map,
+                                                                      outputs_coord[-1, imgid].detach(),
+                                                                      inst_repr[imgid],
+                                                                      obj_label_logits=outputs_class[-1, imgid],
+                                                                      idx=imgid,
+                                                                      features_multiview=relation_feature_map_multiview)
+                else:
+                    rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
                 p_relation_exist_logits = self.relation_proposal_mlp(rel_reps)
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
@@ -293,7 +316,18 @@ class STIP(nn.Module):
 
                 sampled_rel_pairs = rel_pairs[sampled_rel_inds]
                 sampled_rel_reps = rel_reps[sampled_rel_inds]
+                if self.args.clip1:
+                    sampled_union_feats = union_feats[sampled_rel_inds]
                 sampled_rel_pred_exists = p_relation_exist_logits.squeeze(1)[sampled_rel_inds]
+
+            if self.args.clip1:
+                logit_scale = self.logit_scale.exp()
+                sampled_union_feats = self.union_clip_proj(sampled_union_feats).unsqueeze(1)
+                sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1).clamp(max=self.obj_list_length-1)
+                obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1).clamp(max=self.obj_list_length-1)
+                total_index = sub_index * self.obj_list_length + obj_index
+                text_features = self.word_features_spo[total_index].permute(0, 2, 1)
+                text_scores = logit_scale * torch.matmul(sampled_union_feats / sampled_union_feats.norm(dim=-1, keepdim=True), text_features / text_features.norm(dim=1, keepdim=True))
 
             # >>>>>>>>>>>> relation classification <<<<<<<<<<<<<<<
             if self.args.use_simple_pointsfusion and self.args.use_pointsfusion:
@@ -431,18 +465,18 @@ class STIP(nn.Module):
                                                     pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
                                                     memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
 
-            if self.args.clip1:
-                outs_intermediate = []
-                for i in range(outs.shape[0]):
-                    outs_nointermediate = outs[i].permute(1, 0, 2)
-                    sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
-                    obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
-                    total_index = sub_index * 10 + obj_index
-                    text_features = self.word_features[total_index]
-                    text_features = self.text_proj(text_features).permute(1, 0, 2)
-                    text_atten_output = self.text_attention(outs_nointermediate, text_features)[0]
-                    outs_intermediate.append(text_atten_output.permute(1, 0, 2).unsqueeze(0))
-                outs = torch.cat(outs_intermediate, dim=0)
+            # if self.args.clip1:
+            #     outs_intermediate = []
+            #     for i in range(outs.shape[0]):
+            #         outs_nointermediate = outs[i].permute(1, 0, 2)
+            #         sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1)
+            #         obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1)
+            #         total_index = sub_index * 10 + obj_index
+            #         text_features = self.word_features_spo[total_index]
+            #         text_features = self.text_proj(text_features).permute(1, 0, 2)
+            #         text_atten_output = self.text_attention(outs_nointermediate, text_features)[0]
+            #         outs_intermediate.append(text_atten_output.permute(1, 0, 2).unsqueeze(0))
+            #     outs = torch.cat(outs_intermediate, dim=0)
 
             if self.args.clip2:
                 outs_intermediate = []
@@ -1044,7 +1078,7 @@ class RelationFeatureExtractor(nn.Module):
             relation_feats = torch.cat([relation_feats, semantic_feats_tail], dim=-1)
 
         # union feature
-        if self.args.use_union_feature:
+        if self.args.use_union_feature or self.args.clip1:
             # H, W = features.tensors.shape[-2:] # stacked image size
             h, w = (~features.mask[idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
             proj_feature = self.input_proj(features.tensors[idx:idx+1])
@@ -1056,7 +1090,8 @@ class RelationFeatureExtractor(nn.Module):
             )
             union_visual_feats = roi_align(proj_feature, scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
             union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1))
-            relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+            if self.args.use_union_feature:
+                relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
 
         if self.args.use_view6:
             # H, W = features.tensors.shape[-2:] # stacked image size
@@ -1073,7 +1108,10 @@ class RelationFeatureExtractor(nn.Module):
             relation_feats = torch.cat([relation_feats, view6_visual_feats], dim=-1)
 
         x = self.fusion_fc(relation_feats)
-        return x
+        if self.args.clip1:
+            return x, union_visual_feats
+        else:
+            return x
 
     def extract_spatial_layout_feats(self, xyxy_boxes):
         box_center = torch.stack([(xyxy_boxes[:, 0] + xyxy_boxes[:, 2]) / 2, (xyxy_boxes[:, 1] + xyxy_boxes[:, 3]) / 2], dim=1)
