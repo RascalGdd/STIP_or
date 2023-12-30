@@ -1016,7 +1016,7 @@ class RelationFeatureExtractor(nn.Module):
                 fusion_dim += semantic_dim
 
         # union feature
-        if args.use_union_feature:
+        if args.use_union_feature or args.clip1:
             out_ch, union_out_dim = 256, 256
             self.input_proj = nn.Sequential(
                 nn.Conv2d(in_channels, out_ch, kernel_size=1),
