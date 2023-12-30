@@ -490,6 +490,9 @@ class STIP(nn.Module):
 
             action_logits = self.action_embed(outs)
 
+            if self.args.clip1:
+                action_logits += text_scores
+
             pred_rel_pairs.append(sampled_rel_pairs)
             pred_actions.append(action_logits)
             pred_rel_exists.append(sampled_rel_pred_exists)
