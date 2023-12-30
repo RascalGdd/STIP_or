@@ -1023,7 +1023,8 @@ class RelationFeatureExtractor(nn.Module):
                 nn.ReLU(inplace=True),
             ) # reduce channel size before pooling
             self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
-            fusion_dim += union_out_dim
+            if args.use_union_feature:
+                fusion_dim += union_out_dim
 
         if args.use_view6:
             out_ch, union_out_dim = 256, 256
