@@ -75,9 +75,10 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     hoi_recognition_time = []
     names = []
 
-    for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+    for samples, targets, multiview_samples, points, video_samples in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
+        video_samples = video_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 

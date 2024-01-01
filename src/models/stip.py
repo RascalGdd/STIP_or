@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.util.misc import NestedTensor, nested_tensor_from_tensor_list
 from torchvision.ops import roi_align
-from .transformer import TransformerDecoderLayer, TransformerDecoder
+from .transformer import *
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
@@ -84,6 +84,11 @@ class STIP(nn.Module):
             decoder_norm = nn.LayerNorm(self.args.hidden_dim)
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, self.args.hidden_dim))
+        temporal_multiview_fusion_layer = TransformerEncoderLayer(self.args.hidden_dim, self.args.hoi_nheads)
+        temporal_multiview_fusion_norm = nn.LayerNorm(self.args.hidden_dim)
+        self.temporal_multiview_fusion = TransformerEncoder(temporal_multiview_fusion_layer, self.args.hoi_dec_layers, temporal_multiview_fusion_norm)
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None):
         # if isinstance(samples, (list, torch.Tensor)):
@@ -356,7 +361,7 @@ class STIP(nn.Module):
                                                        1).flatten(0).unsqueeze(0)], dim=1)
                     memory_pos_last = torch.cat([memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
                                             memory_pos_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1), memory_pos_multiview[0::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
-                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*2, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
+                    layout_encodings_last = torch.cat([torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*2, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device), layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*2, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
 
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
@@ -389,6 +394,17 @@ class STIP(nn.Module):
                                                     memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
 
                 else:
+
+                    memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                              memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
+                    input_with_token = torch.cat([self.cls_token, memory_input_last], dim=0)
+                    processed_token = self.temporal_multiview_fusion(src=input_with_token)[0].unsqueeze(0)
+                    query_reps = torch.cat([processed_token, query_reps], dim=0)
+
+                    relation_dependency_encodings = None
+                    layout_encodings = None
+
+
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
                                                     query_pos=query_pos_encoding,
@@ -398,7 +414,7 @@ class STIP(nn.Module):
                                                     memory_mask=memory_union_mask,
                                                     pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
                                                     memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
-
+            outs = outs[:, 1:, :, :]
             action_logits = self.action_embed(outs)
 
             pred_rel_pairs.append(sampled_rel_pairs)
