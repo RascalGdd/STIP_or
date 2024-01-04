@@ -16,6 +16,7 @@ from matplotlib import colormaps
 # from torchvision.transforms.functional import to_pil_image
 # from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
 import clip
+from torch.nn import L1Loss
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -28,7 +29,6 @@ class STIP(nn.Module):
 
         if self.args.clip1 or self.args.clip2:
             # self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
-            self.text_proj = make_fc(512, 256)
             self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
             for para in self.clip_model.parameters():
                 para.requires_grad = False
@@ -49,12 +49,13 @@ class STIP(nn.Module):
                 self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
             if self.args.clip2:
-                self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
-                                  "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-                wordpair_list = ["a scene of " + k for k in self.verb_list]
-                text_token = clip.tokenize(wordpair_list).to(self.args.device)
-                encode_features = self.clip_model.encode_text(text_token)
-                self.word_features = nn.Parameter(encode_features.to(torch.float32))
+                self.reg_clip_proj = make_fc(256, 512)
+                # self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+                #                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+                # wordpair_list = ["a scene of " + k for k in self.verb_list]
+                # text_token = clip.tokenize(wordpair_list).to(self.args.device)
+                # encode_features = self.clip_model.encode_text(text_token)
+                # self.word_features = nn.Parameter(encode_features.to(torch.float32))
 
 
         if not args.train_detr:
@@ -220,6 +221,7 @@ class STIP(nn.Module):
 
         # >>>>>>>>>>>> HOI DETECTION LAYERS <<<<<<<<<<<<<<<
         pred_rel_exists, pred_rel_pairs, pred_actions = [], [], []
+        query_outs = []
         memory_input, memory_input_mask = features[-1].decompose()
         memory_input_multiview, memory_input_mask_multiview = features_multiview[-1].decompose()
         memory_pos = pos[-1] if self.args.num_feature_levels == 1 else pos[-2]
@@ -478,17 +480,19 @@ class STIP(nn.Module):
             #         outs_intermediate.append(text_atten_output.permute(1, 0, 2).unsqueeze(0))
             #     outs = torch.cat(outs_intermediate, dim=0)
 
-            if self.args.clip2:
-                outs_intermediate = []
-                for i in range(outs.shape[0]):
-                    outs_nointermediate = outs[i]
-                    text_features = self.word_features.unsqueeze(1)
-                    text_features = self.text_proj(text_features)
-                    text_atten_output = self.text_attention(outs_nointermediate, text_features)[0]
-                    outs_intermediate.append(text_atten_output.unsqueeze(0))
-                outs = torch.cat(outs_intermediate, dim=0)
+            # if self.args.clip2:
+            #     outs_intermediate = []
+            #     for i in range(outs.shape[0]):
+            #         outs_nointermediate = outs[i]
+            #         text_features = self.word_features.unsqueeze(1)
+            #         text_features = self.text_proj(text_features)
+            #         text_atten_output = self.text_attention(outs_nointermediate, text_features)[0]
+            #         outs_intermediate.append(text_atten_output.unsqueeze(0))
+            #     outs = torch.cat(outs_intermediate, dim=0)
 
             action_logits = self.action_embed(outs)
+
+            clip_logits = self.reg_clip_proj(outs[-1])
 
             if self.args.clip1:
                 action_logits += text_scores
@@ -496,9 +500,11 @@ class STIP(nn.Module):
             pred_rel_pairs.append(sampled_rel_pairs)
             pred_actions.append(action_logits)
             pred_rel_exists.append(sampled_rel_pred_exists)
+            query_outs.append(clip_logits)
 
         hoi_recognition_time = time.time() - start_time
         out = {
+            "query_outs": query_outs,
             "pred_logits": outputs_class[-1],
             "pred_boxes": outputs_coord[-1],
             "pred_rel_pairs": pred_rel_pairs,
@@ -604,6 +610,21 @@ class STIPCriterion(nn.Module):
         elif args.dataset_file == 'or':
             self.invalid_ids = []
             self.valid_ids = list(range(self.args.num_actions))
+
+        if self.args.clip2:
+            self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
+            for para in self.clip_model.parameters():
+                para.requires_grad = False
+            self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+                              "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+            wordpair_list = ["a scene of " + k for k in self.verb_list]
+            text_token = clip.tokenize(wordpair_list).to(self.args.device)
+            encode_features = self.clip_model.encode_text(text_token)
+            self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
+            # self.word_features = nn.Parameter(encode_features.to(torch.float32))
+
+            self.mimic_loss_func = L1Loss()
+
 
         if args.train_detr:
             self.num_classes = args.num_classes
@@ -735,8 +756,9 @@ class STIPCriterion(nn.Module):
 
         loss_proposal = self.proposal_loss(torch.cat(outputs['pred_action_exists'], dim=0), rel_proposal_targets)
         loss_action = self.action_loss(torch.cat(outputs['pred_actions'], dim=0)[..., self.valid_ids], all_rel_pair_targets[..., self.valid_ids], prior_verb_label_mask)
+        loss_mimic = 0.1 * self.mimic_loss(torch.cat(outputs['query_outs'], dim=0), all_rel_pair_targets[..., self.valid_ids])
 
-        loss_dict = {'loss_proposal': loss_proposal, 'loss_act': loss_action}
+        loss_dict = {'loss_proposal': loss_proposal, 'loss_act': loss_action, 'loss_mimic': loss_mimic}
         if 'hoi_aux_outputs' in outputs:
             for i, aux_outputs in enumerate(outputs['hoi_aux_outputs']):
                 aux_loss = {
@@ -748,7 +770,7 @@ class STIPCriterion(nn.Module):
         if self.args.train_detr:
             # Compute the average number of target boxes accross all nodes, for normalization purposes
             num_boxes = sum(len(t["labels"]) for t in targets)
-            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=self.args.device)
             if is_dist_avail_and_initialized():
                 torch.distributed.all_reduce(num_boxes)
             num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
@@ -823,6 +845,13 @@ class STIPCriterion(nn.Module):
             loss = -(pos_loss + neg_loss) / num_pos
 
         return loss
+
+    def mimic_loss(self, inputs, targets):
+        query_indexes = targets.nonzero()[:, 0]
+        action_indexes = targets.nonzero()[:, 1]
+        mimic_x = inputs[query_indexes].squeeze(1)
+        mimic_y = self.word_features[action_indexes, :]
+        return self.mimic_loss_func(mimic_x, mimic_y)
 
 class STIPPostProcess(nn.Module):
     def __init__(self, args, model):

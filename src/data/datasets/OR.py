@@ -311,14 +311,15 @@ def make_coco_transforms(image_set):
         return T.Compose([
             T.RandomHorizontalFlip(),
             T.ColorJitter(.4, .4, .4),
-            T.RandomSelect(
-                T.RandomResize(scales, max_size=1333),
-                T.Compose([
-                    T.RandomResize([400, 500, 600]),
-                    # T.RandomSizeCrop(384, 600), # TODO: cropping causes that some boxes are dropped then no tensor in the relation part! What should we do?
-                    T.RandomResize(scales, max_size=1333),
-                ])
-            ),
+            T.RandomResize(scales, max_size=1333),
+            # T.RandomSelect(
+            #     T.RandomResize(scales, max_size=1333),
+            #     T.Compose([
+            #         T.RandomResize([400, 500, 600]),
+            #         # T.RandomSizeCrop(384, 600), # TODO: cropping causes that some boxes are dropped then no tensor in the relation part! What should we do?
+            #         T.RandomResize(scales, max_size=1333),
+            #     ])
+            # ),
             normalize])
 
     if image_set == 'val' or "test" or "infer":
