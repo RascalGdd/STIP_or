@@ -28,14 +28,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     print_freq = 50
 
     print(f"\n>>> Epoch #{(epoch+1)}")
-    for samples, targets, multiview_samples, points, video_samples in metric_logger.log_every(data_loader, print_freq, header):
+    for samples, targets, multiview_samples, points, video_samples, depths in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         video_samples = video_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 
-        outputs = model(samples, targets, multiview_samples, points, video_samples)
+        outputs = model(samples, targets, multiview_samples, points, video_samples, depths)
         loss_dict = criterion(outputs, targets, log)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)

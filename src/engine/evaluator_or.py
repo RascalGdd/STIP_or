@@ -75,13 +75,14 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     hoi_recognition_time = []
     names = []
 
-    for samples, targets, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+    for samples, targets, multiview_samples, points, video_samples, depths in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
+        video_samples = video_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
 
-        outputs = model(samples, None, multiview_samples, points)
+        outputs = model(samples, None, multiview_samples, points, video_samples, depths)
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessors['hoi'](outputs, orig_target_sizes, threshold=thr, dataset='or')
         hoi_recognition_time.append(results[0]['hoi_recognition_time'] * 1000)
@@ -279,13 +280,14 @@ def or_evaluate_infer(model, postprocessors, data_loader, device, thr, args):
     preds = []
     names = []
 
-    for samples, name, multiview_samples, points in metric_logger.log_every(data_loader, 50, header):
+    for samples, name, multiview_samples, points, video_samples, depths in metric_logger.log_every(data_loader, 50, header):
         # for samples, name, multiview_samples, points in data_loader:
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
+        video_samples = video_samples.to(device)
 
-        outputs = model(samples, multiview_samples=multiview_samples, points=points)
+        outputs = model(samples, None, multiview_samples, points, video_samples, depths)
         results = postprocessors['hoi'](outputs, None, threshold=thr, dataset='or')
         # outputs = model(samples, None, multiview_samples, points)
         # # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
