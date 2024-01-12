@@ -505,3 +505,80 @@ def _get_activation_fn(activation):
     if activation == "glu":
         return F.glu
     raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+
+
+# x = torch.randn([1, 256, 20, 25])
+# print(x.shape)
+#
+# in_ch, out_ch = 256, 256
+class TemporalFusion(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super(TemporalFusion, self).__init__()
+        self.temporal_proj = nn.Conv2d(in_channels=2048, out_channels=256, kernel_size=(1,1), stride=(1,1))
+        self.kernels_list1 = nn.ModuleList([nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(1,1), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(2, 2), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(3, 3), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(4, 4), stride=(1,1),
+                                                  padding='same')
+                                        ])
+        self.kernels_list2 = nn.ModuleList([nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(1,1), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(2, 2), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(3, 3), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(4, 4), stride=(1,1),
+                                                  padding='same')
+                                        ])
+        self.x_embed = nn.Parameter(torch.zeros([1, out_ch, 1]))
+        self.y_embed = nn.Parameter(torch.zeros([1, out_ch, 1]))
+        self.z_embed = nn.Parameter(torch.zeros([1, out_ch, 1]))
+
+        temporalFusion_layer = TransformerDecoderLayer_multiview(out_ch, 1, 256)
+        temporalFusion_norm = nn.LayerNorm(256)
+        #  2 is the number of fusion layers
+        self.temporalFusion = TransformerDecoder(temporalFusion_layer, 2, temporalFusion_norm,
+                                               return_intermediate=False)
+        self.mlp = make_fc(out_ch * len(self.kernels_list1), 2048)
+        # self.temporal_proj_back = nn.Conv2d(in_channels=256, out_channels=2048, kernel_size=(1,1), stride=(1,1))
+
+
+    def forward(self, x, y, z, view):
+        # x is current frame t, y is t-1, z is t+1
+
+        x0 = self.temporal_proj(x)
+        y = self.temporal_proj(y)
+        z = self.temporal_proj(z)
+        h, w, ch_dims = x0.shape[-2], x0.shape[-1], x0.shape[1]
+
+        kernel_list = self.kernels_list1 if view == 1 else self.kernels_list2
+        outs_x, outs_yz, outs_x2 = [], [], []
+        for kernel in kernel_list:
+            x1 = kernel(x0)
+            y1 = kernel(y)
+            z1 = kernel(z)
+            outs_x.append((x1.flatten(2)+self.x_embed).permute(2, 0, 1))
+            outs_yz.append(torch.cat([y1.flatten(2)+self.y_embed, z1.flatten(2)+self.z_embed], dim=0).permute(2, 0, 1))
+        for k in range(len(outs_x)):
+            x2 = self.temporalFusion(outs_x[k], outs_yz[k])[0]
+            outs_x2.append(x2)
+        all_time_features = torch.cat(outs_x2, dim=-1)
+        fused_feature = self.mlp(all_time_features).view(h, w, 1, 2048).permute(2, 3, 0, 1)
+        fused_feature += x
+
+        return fused_feature
+
+
+def make_fc(dim_in, hidden_dim, a=1):
+    '''
+        Caffe2 implementation uses XavierFill, which in fact
+        corresponds to kaiming_uniform_ in PyTorch
+        a: negative slope
+    '''
+    fc = nn.Linear(dim_in, hidden_dim)
+    nn.init.kaiming_uniform_(fc.weight, a=a)
+    nn.init.constant_(fc.bias, 0)
+    return fc

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.util.misc import NestedTensor, nested_tensor_from_tensor_list
 from torchvision.ops import roi_align
-from .transformer import TransformerDecoderLayer, TransformerDecoder
+from .transformer import TransformerDecoderLayer, TransformerDecoder, TemporalFusion
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
@@ -84,6 +84,8 @@ class STIP(nn.Module):
             decoder_norm = nn.LayerNorm(self.args.hidden_dim)
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
+        if self.args.temporal1:
+            self.temporalfusion = TemporalFusion(in_ch=256, out_ch=256)
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None, depths=None):
         # if isinstance(samples, (list, torch.Tensor)):
@@ -103,6 +105,14 @@ class STIP(nn.Module):
         features_multiview, pos_multiview = self.detr.backbone(multiview_samples)
         features_video, pos_video = self.detr.backbone(video_samples)
         bs = features[-1].tensors.shape[0]
+        if self.args.temporal1:
+            x_fused_list = []
+            for batch_id in range(bs):
+                x_features = features[-1].tensors[batch_id].unsqueeze(0)
+                y_features = features_video[-1].tensors[0::2][batch_id].unsqueeze(0)
+                z_features = features_video[-1].tensors[1::2][batch_id].unsqueeze(0)
+                x_fused_list.append(self.temporalfusion(x_features, y_features, z_features, view=1))
+            features[-1].tensors = torch.cat(x_fused_list, dim=0)
 
         if self.args.num_feature_levels > 1:
             srcs = []
