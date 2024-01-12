@@ -128,12 +128,9 @@ def crop(image, target, region, multiview_images=None, video_images=None):
 
 def hflip(image, target, multiview_images=None, video_images=None):
     flipped_image = F.hflip(image)
-    if multiview_images:
-        flipped_multiview_images = [F.hflip(k) for k in multiview_images]
-    if video_images:
-        flipped_video_images = [F.hflip(k) for k in video_images]
-    else:
-        flipped_video_images = None
+    flipped_multiview_images = [F.hflip(k) for k in multiview_images]
+    flipped_video_images = [F.hflip(j) for j in video_images]
+
 
     w, h = image.size
 
@@ -162,10 +159,9 @@ def hflip(image, target, multiview_images=None, video_images=None):
 
     if "masks" in target:
         target['masks'] = target['masks'].flip(-1)
-    if multiview_images:
-        return flipped_image, target, flipped_multiview_images, flipped_video_images
-    else:
-        return flipped_image, target
+
+    return flipped_image, target, flipped_multiview_images, flipped_video_images
+
 
 
 def resize(image, target, size, max_size=None, multiview_images=None, video_images=None):
@@ -199,12 +195,8 @@ def resize(image, target, size, max_size=None, multiview_images=None, video_imag
 
     size = get_size(image.size, size, max_size)
     rescaled_image = F.resize(image, size)
-    if multiview_images:
-        rescaled_multiview_images = [F.resize(k, size) for k in multiview_images]
-    if video_images:
-        rescaled_video_images = [F.resize(k, size) for k in video_images]
-    else:
-        rescaled_video_images = None
+    rescaled_multiview_images = [F.resize(k, size) for k in multiview_images]
+    rescaled_video_images = [F.resize(j, size) for j in video_images]
 
     if target is None:
         return rescaled_image, None, rescaled_multiview_images, rescaled_video_images
@@ -242,21 +234,18 @@ def resize(image, target, size, max_size=None, multiview_images=None, video_imag
     if "masks" in target:
         target['masks'] = interpolate(
             target['masks'][:, None].float(), size, mode="nearest")[:, 0] > 0.5
-    if multiview_images:
-        return rescaled_image, target, rescaled_multiview_images, rescaled_video_images
-    else:
-        return rescaled_image, target
+
+    return rescaled_image, target, rescaled_multiview_images, rescaled_video_images
+
 
 
 def pad(image, target, padding, multiview_images=None, video_images=None):
     # assumes that we only pad on the bottom right corners
     padded_image = F.pad(image, (0, 0, padding[0], padding[1]))
-    if multiview_images:
-        padded_multiview_images = [F.pad(k, (0, 0, padding[0], padding[1])) for k in multiview_images]
-    if video_images:
-        padded_video_images = [F.pad(k, (0, 0, padding[0], padding[1])) for k in video_images]
-    else:
-        padded_video_images = None
+
+    padded_multiview_images = [F.pad(k, (0, 0, padding[0], padding[1])) for k in multiview_images]
+    padded_video_images = [F.pad(j, (0, 0, padding[0], padding[1])) for j in video_images]
+
 
     if target is None:
         return padded_image, None
@@ -265,10 +254,8 @@ def pad(image, target, padding, multiview_images=None, video_images=None):
     target["size"] = torch.tensor(padded_image[::-1])
     if "masks" in target:
         target['masks'] = torch.nn.functional.pad(target['masks'], (0, padding[0], 0, padding[1]))
-    if multiview_images:
-        return padded_image, target, padded_multiview_images, padded_video_images
-    else:
-        return padded_image, target
+    return padded_image, target, padded_multiview_images, padded_video_images
+
 
 
 class RandomCrop(object):
@@ -354,10 +341,8 @@ class RandomSelect(object):
 
 class ToTensor(object):
     def __call__(self, img, target, multiview_images, video_images):
-        if multiview_images:
-            return F.to_tensor(img), target, [F.to_tensor(k) for k in multiview_images], None if not video_images else [F.to_tensor(j) for j in video_images]
-        else:
-            return F.to_tensor(img), target
+        return F.to_tensor(img), target, [F.to_tensor(k) for k in multiview_images], [F.to_tensor(j) for j in video_images]
+
 
 
 class RandomErasing(object):
@@ -376,12 +361,9 @@ class Normalize(object):
 
     def __call__(self, image, target=None, multiview_images=None, video_images=None):
         image = F.normalize(image, mean=self.mean, std=self.std)
-        if multiview_images:
-            multiview_images = [F.normalize(k, mean=self.mean, std=self.std) for k in multiview_images]
-        if video_images:
-            video_images = [F.normalize(k, mean=self.mean, std=self.std) for k in video_images]
-        else:
-            video_images = None
+        multiview_images = [F.normalize(k, mean=self.mean, std=self.std) for k in multiview_images]
+        video_images = [F.normalize(j, mean=self.mean, std=self.std) for j in video_images]
+
         if target is None:
             return image, None, multiview_images, video_images
         target = target.copy()
@@ -414,7 +396,7 @@ class ColorJitter(object):
         self.color_jitter = T.ColorJitter(brightness, contrast, saturatio, hue)
 
     def __call__(self, img, target, multiview_images, video_images):
-        return self.color_jitter(img), target, [self.color_jitter(k) for k in multiview_images], None if not video_images else [self.color_jitter(j) for j in video_images]
+        return self.color_jitter(img), target, [self.color_jitter(k) for k in multiview_images], [self.color_jitter(j) for j in video_images]
 
 
 class Compose(object):

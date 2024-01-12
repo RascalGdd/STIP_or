@@ -136,8 +136,16 @@ class MultiView_CocoDetection(VisionDataset):
         return [Image.open(os.path.join(self.root, path_mainview.split('.')[0] + '_view' + str(view) + '.' + path_mainview.split('.')[1])).convert("RGB") for view in self.views]
 
     def _load_image_video(self, id: int):
-        if id-1 < min(self.ids) or id+1 > max(self.ids):
-            return None
+        if id-1 < min(self.ids):
+            video_ids = [id, id+1]
+            path_video = [self.coco.loadImgs(id)[0]["file_name"] for id in video_ids]
+            return [Image.open(os.path.join(self.root, path)).convert("RGB") for path in path_video]
+
+        elif id+1 > max(self.ids):
+            video_ids = [id-1, id]
+            path_video = [self.coco.loadImgs(id)[0]["file_name"] for id in video_ids]
+            return [Image.open(os.path.join(self.root, path)).convert("RGB") for path in path_video]
+
         else:
             video_ids = [id-1, id+1]
             path_video = [self.coco.loadImgs(id)[0]["file_name"] for id in video_ids]
@@ -224,7 +232,7 @@ class CocoDetection(MultiView_CocoDetection):
         target['hois'] = relation_map.nonzero(as_tuple=False)
 
         if not images_video:
-            images_video = [torch.zeros_like(img), torch.zeros_like(img)]
+            print("error! images_video is None!")
 
         return img, target, images_multiview, points, images_video, depth
 
