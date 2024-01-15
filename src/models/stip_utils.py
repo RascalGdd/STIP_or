@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.patheffects as PathEffects
 from src.util import box_ops
-
+import open3d as o3d
 
 Tensor = torch.Tensor
 
@@ -687,3 +687,34 @@ def plot_hoi_results(samples, results, targets, args=None, idx=0):
     plt.show()
     print('plot_hoi_results')
     return topk_qids.tolist(), q_name_list
+
+def projection(pose3d):
+    extrinsics = np.array([[-0.67554116, -0.50051785,  0.5414111,  2.4134722],
+    [-0.02900128,  0.751763 ,   0.6587955,   2.3385253,],
+    [-0.7367517,   0.42934185, -0.5223625, -2.4476247, ],
+    [0.,          0.,         0.,       1.]])
+    pose3d_pc = o3d.geometry.PointCloud()
+    pose3d_pc.points = o3d.utility.Vector3dVector(pose3d.to("cpu") * 2)
+    pose3d_pc.transform(np.linalg.inv(extrinsics))  # Bring from world to rgb camera coords
+    pose3d_pc.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])  # this is needed
+    obj_points = np.asarray(pose3d_pc.points)
+    # Project onto image
+
+    # 980.2613525390625
+    # 980.2659301757812
+    # 1021.7696533203125
+    # 776.943115234375
+
+    fx = np.array(980.2613525390625)
+    fy = np.array(980.2613525390625)
+    cx = np.array(1021.7696533203125)
+    cy = np.array(776.943115234375)
+
+    obj_points[:, 2][obj_points[:, 2] == 0.0] = 1.0  # replace zero with 1 to avoid divide by zeros
+    x = obj_points[:, 0]
+    y = obj_points[:, 1]
+    z = obj_points[:, 2]
+    u = (x * fx / z) + cx
+    v = (y * fy / z) + cy
+    pose2d = np.stack([u, v], axis=1)
+    return pose2d

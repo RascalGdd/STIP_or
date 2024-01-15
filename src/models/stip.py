@@ -15,6 +15,7 @@ import PIL
 from matplotlib import colormaps
 # from torchvision.transforms.functional import to_pil_image
 # from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
+from src.models.stip_utils import projection
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -101,7 +102,7 @@ class STIP(nn.Module):
         # >>>>>>>>>>>>  BACKBONE LAYERS  <<<<<<<<<<<<<<<
         features, pos = self.detr.backbone(samples)
         features_multiview, pos_multiview = self.detr.backbone(multiview_samples)
-        features_video, pos_video = self.detr.backbone(video_samples)
+        # features_video, pos_video = self.detr.backbone(video_samples)
         bs = features[-1].tensors.shape[0]
 
         if self.args.num_feature_levels > 1:
@@ -134,6 +135,12 @@ class STIP(nn.Module):
         if self.args.use_pointsfusion:
             end_points = self.backbone_net(points, end_points)
             point_features = torch.cat([end_points['fp2_features'].permute(0, 2, 1), end_points['fp2_xyz']], dim=-1)
+            point_xyzs = end_points['fp2_xyz']
+            point_2dxy = []
+            for j in range(bs):
+                point_xyz = point_xyzs[j]
+                point_2dxy.append(torch.tensor(projection(point_xyz)/torch.tensor([2048, 1536])).unsqueeze(0))
+            point_2dxy = torch.cat(point_2dxy, dim=0)
         else:
             point_features = None
 
@@ -232,7 +239,7 @@ class STIP(nn.Module):
                     # hard negative sampling
                     all_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs], dim=0)
                     gt_pair_count = len(gt_rel_pairs[imgid])
-                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview, point_poses=point_2dxy[imgid], point_features=point_features[imgid])
                     p_relation_exist_logits = self.relation_proposal_mlp(all_rel_reps)
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
@@ -943,12 +950,13 @@ class RelationFeatureExtractor(nn.Module):
             fusion_dim += union_out_dim
 
         # fusion
+        fusion_dim += 291
         self.fusion_fc = nn.Sequential(
             make_fc(fusion_dim, out_dim), nn.ReLU(),
             make_fc(out_dim, out_dim), nn.ReLU()
         )
 
-    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None):
+    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None, point_poses=None, point_features=None):
         """pool feature for boxes on one image
             features: dxhxw
             boxes: Nx4 (cx_cy_wh, nomalized to 0-1)
@@ -965,6 +973,17 @@ class RelationFeatureExtractor(nn.Module):
         view6_boxes[:, :2] = 0
         view6_boxes[:, 2:] = 1
 
+        num_rels = union_boxes.shape[0]
+        point_poses = point_poses.to(self.args.device).unsqueeze(2).repeat(1, 1, num_rels)
+        filter1 = point_poses[:, 0, :] >= union_boxes[:, 0]
+        filter2 = point_poses[:, 0, :] <= union_boxes[:, 2]
+        filter3 = point_poses[:, 1, :] >= union_boxes[:, 1]
+        filter4 = point_poses[:, 1, :] <= union_boxes[:, 3]
+        final_filter = filter1 * filter2 * filter3 * filter4
+        selected_features = point_features.unsqueeze(0).repeat(num_rels, 1, 1) * final_filter.permute(1, 0).unsqueeze(2)
+        max_pooled_point_features = torch.max(selected_features, dim=1)[0]
+
+
         # head & tail features
         head_feats = inst_reprs[rel_pairs[:, 0]]
         tail_feats = inst_reprs[rel_pairs[:, 1]]
@@ -972,6 +991,8 @@ class RelationFeatureExtractor(nn.Module):
         head_feats[rel_pairs[:, 0] == rel_pairs[:, 1]] = 0  # set to 0 when head==tail for VCOCO (i.e., tail overlapped)
 
         relation_feats = torch.cat([head_feats, tail_feats], dim=-1)
+
+        relation_feats = torch.cat([relation_feats, max_pooled_point_features], dim=-1)
 
         # spatial layout feats
         if self.args.use_spatial_feature:
