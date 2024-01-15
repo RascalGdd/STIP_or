@@ -560,8 +560,8 @@ class TemporalFusion(nn.Module):
             x1 = kernel(x0)
             y1 = kernel(y)
             z1 = kernel(z)
-            outs_x.append((x1.flatten(2)+self.x_embed).permute(2, 0, 1))
-            outs_yz.append(torch.cat([y1.flatten(2)+self.y_embed, z1.flatten(2)+self.z_embed], dim=0).permute(2, 0, 1))
+            outs_x.append((x1.flatten(2)+self.x_embed).permute(0, 2, 1))
+            outs_yz.append(torch.cat([y1.flatten(2)+self.y_embed, z1.flatten(2)+self.z_embed], dim=0).permute(0, 2, 1))
         for k in range(len(outs_x)):
             x2 = self.temporalFusion(outs_x[k], outs_yz[k])[0]
             outs_x2.append(x2)

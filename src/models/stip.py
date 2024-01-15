@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.util.misc import NestedTensor, nested_tensor_from_tensor_list
 from torchvision.ops import roi_align
-from .transformer import TransformerDecoderLayer, TransformerDecoder, TemporalFusion
+from .transformer import TransformerDecoderLayer, TransformerDecoder, TemporalFusion, TransformerEncoderLayer, TransformerEncoder
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
@@ -104,6 +104,7 @@ class STIP(nn.Module):
         features, pos = self.detr.backbone(samples)
         features_multiview, pos_multiview = self.detr.backbone(multiview_samples)
         features_video, pos_video = self.detr.backbone(video_samples)
+        features_video[0].tensors.detach()
         bs = features[-1].tensors.shape[0]
         if self.args.temporal1:
             x_fused_list = []
@@ -200,6 +201,7 @@ class STIP(nn.Module):
         if self.args.relation_feature_map_from == 'backbone':
             relation_feature_map = features[-1]
             relation_feature_map_multiview = features_multiview[-1]
+            relation_feature_map_video = features_video[-1]
         elif self.args.relation_feature_map_from == 'detr_encoder':
             relation_feature_map = NestedTensor(detr_encoder_outs, memory_input_mask)
             relation_feature_map_multiview = NestedTensor(multiview_encoder_outs, memory_input_mask_multiview)
@@ -242,7 +244,7 @@ class STIP(nn.Module):
                     # hard negative sampling
                     all_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs], dim=0)
                     gt_pair_count = len(gt_rel_pairs[imgid])
-                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview, features_video=relation_feature_map_video)
                     p_relation_exist_logits = self.relation_proposal_mlp(all_rel_reps)
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
@@ -934,14 +936,14 @@ class RelationFeatureExtractor(nn.Module):
                 fusion_dim += semantic_dim
 
         # union feature
-        if args.use_union_feature:
+        if args.use_union_feature or self.args.temporal2:
             out_ch, union_out_dim = 256, 256
             self.input_proj = nn.Sequential(
                 nn.Conv2d(in_channels, out_ch, kernel_size=1),
                 nn.ReLU(inplace=True),
             ) # reduce channel size before pooling
             self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
-            fusion_dim += union_out_dim
+            # fusion_dim += union_out_dim
 
         if args.use_view6:
             out_ch, union_out_dim = 256, 256
@@ -952,13 +954,26 @@ class RelationFeatureExtractor(nn.Module):
             self.visual_proj_view6 = make_fc(out_ch * (resolution**2), union_out_dim)
             fusion_dim += union_out_dim
 
+        if self.args.temporal2:
+            self.x_embed = nn.Parameter(torch.zeros([1, 256]))
+            self.y_embed = nn.Parameter(torch.zeros([1, 256]))
+            self.z_embed = nn.Parameter(torch.zeros([1, 256]))
+            self.temcls_token = nn.Parameter(torch.zeros([1, 1, 256]))
+
+            temcls_fusion_layer = TransformerEncoderLayer(256, 8)
+            temcls_fusion_norm = nn.LayerNorm(256)
+            self.temcls_fusion = TransformerEncoder(temcls_fusion_layer, 2, temcls_fusion_norm)
+            fusion_dim += 256
+
+
         # fusion
         self.fusion_fc = nn.Sequential(
             make_fc(fusion_dim, out_dim), nn.ReLU(),
             make_fc(out_dim, out_dim), nn.ReLU()
         )
 
-    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None):
+
+    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None, features_video=None):
         """pool feature for boxes on one image
             features: dxhxw
             boxes: Nx4 (cx_cy_wh, nomalized to 0-1)
@@ -998,11 +1013,12 @@ class RelationFeatureExtractor(nn.Module):
             semantic_feats_tail = (obj_label_logits.softmax(-1) @ self.label_embedding.weight)[rel_pairs[:, 1]]
             relation_feats = torch.cat([relation_feats, semantic_feats_tail], dim=-1)
 
-        # union feature
-        if self.args.use_union_feature:
+
+        if self.args.temporal2:
             # H, W = features.tensors.shape[-2:] # stacked image size
             h, w = (~features.mask[idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
             proj_feature = self.input_proj(features.tensors[idx:idx+1])
+            proj_feature_video = self.input_proj(features_video.tensors.split(2)[idx])
             scaled_union_boxes = torch.cat(
                 [
                     torch.zeros((len(union_boxes),1)).to(device=union_boxes.device),
@@ -1010,8 +1026,17 @@ class RelationFeatureExtractor(nn.Module):
                 ], dim=-1
             )
             union_visual_feats = roi_align(proj_feature, scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
-            union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1))
-            relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+            union_visual_feats_before = roi_align(proj_feature_video[idx:idx+1], scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
+            union_visual_feats_after = roi_align(proj_feature_video[idx+1:], scaled_union_boxes,
+                                             output_size=self.resolution, sampling_ratio=2)
+            union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1)) + self.x_embed
+            union_visual_feats_before = self.visual_proj(union_visual_feats_before.flatten(start_dim=1)) + self.y_embed
+            union_visual_feats_after = self.visual_proj(union_visual_feats_after.flatten(start_dim=1)) + self.z_embed
+            union_visual_feats_all = torch.cat([union_visual_feats.unsqueeze(0), union_visual_feats_before.unsqueeze(0), union_visual_feats_after.unsqueeze(0)], dim=0)
+            union_visual_feats_all_withtoken = torch.cat([self.temcls_token.repeat(1, union_visual_feats.shape[0], 1), union_visual_feats_all], dim=0)
+            fused_token = self.temcls_fusion(union_visual_feats_all_withtoken)[0]
+            relation_feats = torch.cat([relation_feats, fused_token], dim=-1)
+            # relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
 
         if self.args.use_view6:
             # H, W = features.tensors.shape[-2:] # stacked image size
