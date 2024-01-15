@@ -1,0 +1,26 @@
+python -m torch.distributed.launch  \
+--nproc_per_node=2   \
+--use_env STIP_main.py  \
+--validate    \
+--num_hoi_queries 100   \
+--num_queries 20   \
+--batch_size 2   \
+--lr 5e-5   \
+--hoi_aux_loss    \
+--dataset_file or   \
+--detr_weights /home/allen/experiemtns/Diandian/detr-r50-pre-4dor-stip-noquery.pth   \
+--output_dir /home/allen/experiemtns/Diandian   \
+--img_folder /media/allen/PassportPJL/Datasets/Medical/4dor-multi_view/4dor/images/  \
+--img_folder_infer /media/allen/PassportPJL/Datasets/Medical/4dor-multi_view/4dor/infer/  \
+--ann_path /media/allen/PassportPJL/Datasets/Medical/4dor-multi_view/4dor/  \
+--group_name or_results   \
+--HOIDet   \
+--run_name baseline2  \
+--epochs 100    \
+--use_tricks_val   \
+--use_relation_tgt_mask   \
+--add_none   \
+--train_detr   \
+--use_pointsfusion   \
+--use_multiviewfusion_last  \
+--temporal1
