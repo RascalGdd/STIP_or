@@ -15,6 +15,7 @@ import PIL
 from matplotlib import colormaps
 # from torchvision.transforms.functional import to_pil_image
 # from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
+from .pointtemp import P4Transformer
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
