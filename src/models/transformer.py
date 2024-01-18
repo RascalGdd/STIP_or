@@ -537,13 +537,18 @@ class TemporalFusion(nn.Module):
         self.y_embed = nn.Parameter(torch.zeros([1, out_ch, 1]))
         self.z_embed = nn.Parameter(torch.zeros([1, out_ch, 1]))
 
-        temporalFusion_layer = TransformerDecoderLayer_multiview(out_ch, 1, 256)
+        # temporalFusion_layer = TransformerDecoderLayer_multiview(out_ch, 4, 2048)
+        # temporalFusion_norm = nn.LayerNorm(256)
+        # self.temporalFusion = TransformerDecoder(temporalFusion_layer, 2, temporalFusion_norm,
+        #                                        return_intermediate=False)
+
+        temporalFusion_layer = TransformerEncoderLayer(out_ch, 4, 2048)
         temporalFusion_norm = nn.LayerNorm(256)
-        #  2 is the number of fusion layers
-        self.temporalFusion = TransformerDecoder(temporalFusion_layer, 2, temporalFusion_norm,
-                                               return_intermediate=False)
+        self.temporalFusion = TransformerEncoder(temporalFusion_layer, 2, temporalFusion_norm,)
+
         self.mlp = make_fc(out_ch * len(self.kernels_list1), 2048)
         # self.temporal_proj_back = nn.Conv2d(in_channels=256, out_channels=2048, kernel_size=(1,1), stride=(1,1))
+        self.sa_mlp = make_fc(3, 1)
 
 
     def forward(self, x, y, z, view):
@@ -556,15 +561,18 @@ class TemporalFusion(nn.Module):
 
         kernel_list = self.kernels_list1 if view == 1 else self.kernels_list2
         outs_x, outs_yz, outs_x2 = [], [], []
+        outs_xyz = []
         for kernel in kernel_list:
             x1 = kernel(x0)
             y1 = kernel(y)
             z1 = kernel(z)
             outs_x.append((x1.flatten(2)+self.x_embed).permute(0, 2, 1))
             outs_yz.append(torch.cat([y1.flatten(2)+self.y_embed, z1.flatten(2)+self.z_embed], dim=0).permute(0, 2, 1))
+            outs_xyz.append(torch.cat([(x1.flatten(2)+self.x_embed).permute(0, 2, 1), torch.cat([y1.flatten(2)+self.y_embed, z1.flatten(2)+self.z_embed], dim=0).permute(0, 2, 1)], dim=0))
         for k in range(len(outs_x)):
-            x2 = self.temporalFusion(outs_x[k], outs_yz[k])[0]
-            outs_x2.append(x2)
+            # x2 = self.temporalFusion(outs_x[k], outs_yz[k])[0]
+            x2 = self.temporalFusion(outs_xyz[k])
+            outs_x2.append(self.sa_mlp(x2.permute(1, 2, 0)).permute(2, 0, 1))
         all_time_features = torch.cat(outs_x2, dim=-1)
         fused_feature = self.mlp(all_time_features).view(h, w, 1, 2048).permute(2, 3, 0, 1)
         fused_feature += x
