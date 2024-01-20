@@ -24,7 +24,8 @@ class STIP(nn.Module):
         self.detr_matcher = detr_matcher
         # * Instance Transformer ---------------
         self.detr = detr
-        self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
+        # self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
+        self.p4trans = P4Transformer()
         if not args.train_detr:
             # if this flag is given, freeze the object detection related parameters of DETR
             for p in self.parameters():
@@ -86,7 +87,7 @@ class STIP(nn.Module):
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
         self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
 
-    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None, depths=None):
+    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None, depths=None, points_video=None):
         # if isinstance(samples, (list, torch.Tensor)):
         #     samples = nested_tensor_from_tensor_list(samples)
 
@@ -133,8 +134,9 @@ class STIP(nn.Module):
         # >>>>>>>>>>>>   POINT CLOUD  <<<<<<<<<<<<<<<
         end_points = {}
         if self.args.use_pointsfusion:
-            end_points = self.backbone_net(points, end_points)
-            point_features = torch.cat([end_points['fp2_features'].permute(0, 2, 1), end_points['fp2_xyz']], dim=-1)
+            # end_points = self.backbone_net(points, end_points)
+            # point_features = torch.cat([end_points['fp2_features'].permute(0, 2, 1), end_points['fp2_xyz']], dim=-1)
+            point_features = self.p4trans(points, points_video)
         else:
             point_features = None
 
