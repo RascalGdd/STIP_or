@@ -259,7 +259,7 @@ class STIP(nn.Module):
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
                 rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device)
-                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview, point_poses=point_2dxy[imgid], point_features=point_features[imgid])
                 p_relation_exist_logits = self.relation_proposal_mlp(rel_reps)
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
