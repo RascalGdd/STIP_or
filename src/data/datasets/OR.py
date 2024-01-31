@@ -357,7 +357,7 @@ def make_coco_transforms(image_set):
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
-    scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960]
+    scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
     if image_set == 'train':
         return T.Compose([
@@ -368,7 +368,7 @@ def make_coco_transforms(image_set):
 
     if image_set == 'val' or "test" or "infer":
         return T.Compose([
-            T.RandomResize([960], max_size=2048),
+            T.RandomResize([800], max_size=2048),
             normalize,
         ])
 

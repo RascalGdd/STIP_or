@@ -15,7 +15,7 @@ from torch import nn
 import numpy as np
 import sys
 import os
-
+from src.models.transformer import *
 
 def _break_up_pc(pc):
     xyz = pc[..., 0:3].contiguous()
@@ -100,7 +100,15 @@ class P4Transformer(nn.Module):
                                     mlp_activation=[True, True, True],
                                     original_planes=3)
 
-        self.outconv = nn.Conv2d(in_channels=3, out_channels=1, kernel_size=1, stride=1, padding=0)
+        # self.outconv = nn.Conv2d(in_channels=3, out_channels=1, kernel_size=1, stride=1, padding=0)
+
+        TempFusion_layer = TransformerDecoderLayer_multiview(288, 8)
+        TempFusion_norm = nn.LayerNorm(288)
+        #  2 is the number of fusion layers
+        self.TempFusion = TransformerDecoder(TempFusion_layer, 2, TempFusion_norm,
+                                               return_intermediate=False)
+
+
 
     def forward(self, input, input_video):
 
@@ -134,17 +142,17 @@ class P4Transformer(nn.Module):
         B, L, _, N = new_features4.size()
 
 
-        features = new_features4.permute(0, 1, 3, 2)                                                                                        # [B, L, n2, C]
-        features = torch.reshape(input=features, shape=(features.shape[0], features.shape[1]*features.shape[2], features.shape[3]))         # [B, L*n2, C]
+        # features = new_features4.permute(0, 1, 3, 2)                                                                                        # [B, L, n2, C]
+        # features = torch.reshape(input=features, shape=(features.shape[0], features.shape[1]*features.shape[2], features.shape[3]))         # [B, L*n2, C]
+        #
+        # embedding = self.emb_relu(features)
+        #
+        # features = self.transformer(embedding)
+        #
+        # features = torch.reshape(input=features, shape=(B, L, N, features.shape[2]))                                                        # [B, L, n2, C]
+        # features = features.permute(0, 1, 3, 2)
 
-        embedding = self.emb_relu(features)
-
-        features = self.transformer(embedding)
-
-        features = torch.reshape(input=features, shape=(B, L, N, features.shape[2]))                                                        # [B, L, n2, C]
-        features = features.permute(0, 1, 3, 2)
-
-        new_features4 = features
+        # new_features4 = features
         new_xyzsd4, new_featuresd4 = self.deconv4(new_xyzs4, new_xyzs3, new_features4, new_features3)
 
         new_xyzsd3, new_featuresd3 = self.deconv3(new_xyzsd4, new_xyzs2, new_featuresd4, new_features2)
@@ -153,7 +161,19 @@ class P4Transformer(nn.Module):
         #
         # new_xyzsd1, new_featuresd1 = self.deconv1(new_xyzsd2, xyzs, new_featuresd2, rgbs)
 
-        out = self.outconv(new_featuresd3).squeeze(1).transpose(1, 2)
+        queries = new_featuresd3[:, 0, :, :].permute(2, 0, 1)
+        values = new_featuresd3[:, 1:, :, :].transpose(1, 2).flatten(2).permute(2, 0, 1)
+        out = self.TempFusion(queries, values)[0].permute(1, 0, 2)
+
+        # out = self.outconv(new_featuresd3).squeeze(1).transpose(1, 2)
+
+
+
+
+
+
+
+
         new_xyzsd3 = new_xyzsd3[:, 0, :, :]
         out = torch.cat([out, new_xyzsd3], dim=-1)
 

@@ -381,6 +381,11 @@ class STIP(nn.Module):
                                             memory_pos_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*1, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
 
+                    tgt_mask = None
+                    query_pos_encoding = None
+                    relation_dependency_encodings = None
+                    layout_encodings_last = None
+
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
                                                     query_pos=query_pos_encoding,
