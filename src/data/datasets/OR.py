@@ -121,7 +121,6 @@ class MultiView_CocoDetection(VisionDataset):
         point_cloud[:, :3] /= 1000
         point_cloud[:, 3:] = (point_cloud[:, 3:] - np.array([0.49, 0.54, 0.58]))
         point_cloud, choices = random_sampling(point_cloud, 200000, return_choices=True)
-        point_cloud = torch.tensor(point_cloud).type(torch.FloatTensor)
         return point_cloud
 
     def _load_tiff(self, id: int):
@@ -167,11 +166,12 @@ class MultiView_CocoDetection(VisionDataset):
         return len(self.ids)
 
 class CocoDetection(MultiView_CocoDetection):
-    def __init__(self, img_folder, ann_file, transforms, return_masks, args):
+    def __init__(self, img_folder, ann_file, transforms, return_masks, args, image_set):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks)
         self.num_actions = args.num_actions
+        self.image_set = image_set
 
         #TODO load relationship
         with open('/'.join(ann_file.split('/')[:-1])+'/rel.json', 'r') as f:
@@ -192,6 +192,13 @@ class CocoDetection(MultiView_CocoDetection):
             idx = random.randint(0, len(self.ids)-1)
             image_id = self.ids[idx]
             img, target, images_multiview, points, images_video, depth = super(CocoDetection, self).__getitem__(idx)
+
+        if self.image_set == 'train':
+            points = np.concatenate([translate_pointcloud(points[:, :3]), points[:, 3:]], axis=1)
+            np.random.shuffle(points)
+            points = torch.tensor(points).type(torch.FloatTensor)
+        else:
+            points = torch.tensor(points).type(torch.FloatTensor)
 
         rel_target = self.rel_annotations[str(image_id)]
 
@@ -361,5 +368,5 @@ def build(image_set, args):
     #     else:
     #         ann_file = ann_path + 'val.json'
 
-    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=False, args=args)
+    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=False, args=args, image_set=image_set)
     return dataset
