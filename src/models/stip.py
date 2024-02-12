@@ -640,9 +640,9 @@ class STIPCriterion(nn.Module):
             self.word_proj = make_fc(4096, 256)
             # self.classifier_clip_proj = make_fc(4096, 512)
             self.word_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
-            self.word_features = torch.from_numpy(self.encode_features)
+            self.word_features = torch.from_numpy(self.word_features)
             self.word_features = torch.sum(self.encode_features, dim=1) / 1024.
-            self.word_features = self.encode_features[-14:, :]
+            self.word_features = self.word_features[-14:, :]
 
 
             self.mimic_loss_func = L1Loss()
