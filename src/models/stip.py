@@ -29,9 +29,9 @@ class STIP(nn.Module):
 
         if self.args.clip1 or self.args.clip2:
             # self.text_attention = nn.MultiheadAttention(256, 8, bias=True, batch_first=False, device=self.args.device)
-            self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
-            for para in self.clip_model.parameters():
-                para.requires_grad = False
+            # self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
+            # for para in self.clip_model.parameters():
+            #     para.requires_grad = False
 
             # if self.args.clip1:
             #     self.union_clip_proj = make_fc(256, 512)
@@ -49,14 +49,19 @@ class STIP(nn.Module):
             #     self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
             if self.args.clip2:
-                self.classifier_query_proj = make_fc(512, 256)
-                self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
-                                  "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-                wordpair_list = ["a scene of " + k for k in self.verb_list]
-                text_token = clip.tokenize(wordpair_list).to(self.args.device)
-                self.encode_features = self.clip_model.encode_text(text_token).to(torch.float32)
-                # encode_features = self.classifier_clip_proj(encode_features)
+                # self.classifier_query_proj = make_fc(512, 256)
+                self.classifier_clip_proj = make_fc(4096, 512)
+                # self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+                #                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+                # wordpair_list = ["a scene of " + k for k in self.verb_list]
+                # text_token = clip.tokenize(wordpair_list).to(self.args.device)
+                # self.encode_features = self.clip_model.encode_text(text_token).to(torch.float32)
+                self.encode_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
+                self.encode_features = torch.from_numpy(self.encode_features)
+                self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
+                self.encode_features = self.encode_features[-14:, :]
 
+                # self.encode_features = self.classifier_clip_proj(self.encode_features)
 
 
         if not args.train_detr:
@@ -128,7 +133,7 @@ class STIP(nn.Module):
         else:
             self.before_action_embed = make_fc(self.args.hidden_dim, 512)
             self.action_embed = nn.Linear(512, self.args.num_actions)
-            self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
+            # self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
 
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None):
@@ -497,6 +502,8 @@ class STIP(nn.Module):
             #         outs_intermediate.append(text_atten_output.unsqueeze(0))
             #     outs = torch.cat(outs_intermediate, dim=0)
             if self.args.clip2:
+                self.encode_features = self.classifier_clip_proj(self.encode_features)
+                self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
                 outs = self.before_action_embed(outs)
             action_logits = self.action_embed(outs)
 
@@ -621,17 +628,22 @@ class STIPCriterion(nn.Module):
             self.valid_ids = list(range(self.args.num_actions))
 
         if self.args.clip1:
-            self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
-            for para in self.clip_model.parameters():
-                para.requires_grad = False
-            self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
-                              "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-            wordpair_list = ["a scene of " + k for k in self.verb_list]
-            text_token = clip.tokenize(wordpair_list).to(self.args.device)
-            encode_features = self.clip_model.encode_text(text_token)
-            self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
-            self.word_proj = make_fc(512, 256)
-            # self.word_features = nn.Parameter(encode_features.to(torch.float32))
+            # self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
+            # for para in self.clip_model.parameters():
+            #     para.requires_grad = False
+            # self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+            #                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+            # wordpair_list = ["a scene of " + k for k in self.verb_list]
+            # text_token = clip.tokenize(wordpair_list).to(self.args.device)
+            # encode_features = self.clip_model.encode_text(text_token)
+            # self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
+            self.word_proj = make_fc(4096, 256)
+            # self.classifier_clip_proj = make_fc(4096, 512)
+            self.encode_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
+            self.encode_features = torch.from_numpy(self.encode_features)
+            self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
+            self.encode_features = self.encode_features[-14:, :]
+
 
             self.mimic_loss_func = L1Loss()
 
