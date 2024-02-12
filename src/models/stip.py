@@ -59,7 +59,7 @@ class STIP(nn.Module):
                 self.encode_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
                 self.encode_features = torch.from_numpy(self.encode_features).to(self.args.device)
                 self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
-                self.encode_features = self.encode_features[-14:, :]
+                self.encode_features = self.encode_features[-14:, :].to(torch.float32)
 
                 # self.encode_features = self.classifier_clip_proj(self.encode_features)
 
