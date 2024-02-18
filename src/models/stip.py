@@ -626,7 +626,8 @@ class STIPCriterion(nn.Module):
                 para.requires_grad = False
             self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
                               "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-            wordpair_list = ["a scene of " + k for k in self.verb_list]
+            # wordpair_list = ["a scene of " + k for k in self.verb_list]
+            wordpair_list = ["a scene of a" for k in range(700)]
             text_token = clip.tokenize(wordpair_list).to(self.args.device)
             encode_features = self.clip_model.encode_text(text_token)
             self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
@@ -740,8 +741,10 @@ class STIPCriterion(nn.Module):
 
         # generate relation targets
         all_rel_pair_targets = []
+        det2gt_maps = []
         for imgid, (tgt, (det_idxs, gtbox_idxs)) in enumerate(zip(targets, indices)):
             det2gt_map = {int(d): int(g) for d, g in zip(det_idxs, gtbox_idxs)}
+            det2gt_maps.append(det2gt_map)
             gt_relation_map = tgt['relation_map']
             rel_pairs = outputs['pred_rel_pairs'][imgid]
             rel_pair_targets = torch.zeros((len(rel_pairs), gt_relation_map.shape[-1])).to(gt_relation_map.device)
@@ -749,6 +752,7 @@ class STIPCriterion(nn.Module):
                 if (int(rel[0]) in det2gt_map) and (int(rel[1]) in det2gt_map):
                     rel_pair_targets[idx] = gt_relation_map[det2gt_map[int(rel[0])], det2gt_map[int(rel[1])]]
             all_rel_pair_targets.append(rel_pair_targets)
+        all_rel_pair_targets_remain_batch = all_rel_pair_targets
         all_rel_pair_targets = torch.cat(all_rel_pair_targets, dim=0)
 
         prior_verb_label_mask = None
@@ -767,7 +771,7 @@ class STIPCriterion(nn.Module):
         loss_proposal = self.proposal_loss(torch.cat(outputs['pred_action_exists'], dim=0), rel_proposal_targets)
         loss_action = self.action_loss(torch.cat(outputs['pred_actions'], dim=0)[..., self.valid_ids], all_rel_pair_targets[..., self.valid_ids], prior_verb_label_mask)
         if self.args.clip1:
-            loss_mimic = 0.1 * self.mimic_loss(torch.cat(outputs['query_outs'], dim=0), all_rel_pair_targets[..., self.valid_ids])
+            loss_mimic = 0.1 * self.mimic_loss(outputs['query_outs'], all_rel_pair_targets_remain_batch, outputs['pred_rel_pairs'], det2gt_maps, [target['labels'] for target in targets])
             loss_dict = {'loss_proposal': loss_proposal, 'loss_act': loss_action, 'loss_mimic': loss_mimic}
         else:
             loss_dict = {'loss_proposal': loss_proposal, 'loss_act': loss_action}
@@ -858,13 +862,32 @@ class STIPCriterion(nn.Module):
 
         return loss
 
-    def mimic_loss(self, inputs, targets):
-        query_indexes = targets.nonzero()[:, 0]
-        action_indexes = targets.nonzero()[:, 1]
-        mimic_x = inputs[query_indexes].squeeze(1)
-        mimic_y = self.word_features[action_indexes, :].to(torch.float32)
-        mimic_y = self.word_proj(mimic_y)
-        return self.mimic_loss_func(mimic_x, mimic_y)
+    def mimic_loss(self, inputs, targets, relpairs, det2gts, labels):
+        loss = 0
+        for i in range(len(inputs)):
+            input = inputs[i]
+            target = targets[i]
+            relpair = relpairs[i]
+            det2gt = det2gts[i]
+            label = labels[i]
+            query_index = target.nonzero()[:, 0]
+            gt_label_sbj = torch.tensor([label[det2gt[int(j)]] for j in relpair[query_index][:, 0]]).to(self.args.device)
+            gt_label_sbj = torch.clamp(gt_label_sbj, min=0, max=6)
+            gt_label_obj = torch.tensor([label[det2gt[int(j)]] for j in relpair[query_index][:, 1]]).to(self.args.device)
+            gt_label_obj = torch.clamp(gt_label_obj, min=0, max=6)
+            action_index = target.nonzero()[:, 1].to(self.args.device)
+            total_index = (gt_label_sbj+1)*(gt_label_obj+1)*(action_index+1)-1
+            mimic_x = input[query_index].squeeze(1)
+            mimic_y = self.word_features[total_index, :].to(torch.float32)
+            mimic_y = self.word_proj(mimic_y)
+            loss += self.mimic_loss_func(mimic_x, mimic_y)
+        #
+        # query_indexes = targets.nonzero()[:, 0]
+        # action_indexes = targets.nonzero()[:, 1]
+        # mimic_x = inputs[query_indexes].squeeze(1)
+        # mimic_y = self.word_features[action_indexes, :].to(torch.float32)
+        # mimic_y = self.word_proj(mimic_y)
+        return loss
 
 class STIPPostProcess(nn.Module):
     def __init__(self, args, model):
