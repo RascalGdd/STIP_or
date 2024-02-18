@@ -130,12 +130,10 @@ class STIP(nn.Module):
 
         if not self.args.clip2:
             self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
-            # self.encode_features = self.classifier_clip_proj(self.encode_features)
-            self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
         else:
             self.before_action_embed = make_fc(self.args.hidden_dim, 512)
             self.action_embed = nn.Linear(512, self.args.num_actions)
-            # self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
+            self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
 
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None):
