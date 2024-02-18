@@ -59,7 +59,7 @@ class STIP(nn.Module):
                 self.encode_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
                 self.encode_features = torch.from_numpy(self.encode_features).to(self.args.device)
                 self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
-                self.encode_features = self.encode_features[-14:, :].to(torch.float32)
+                self.encode_features = self.encode_features[-14:, :512].to(torch.float32)
 
                 # self.encode_features = self.classifier_clip_proj(self.encode_features)
 
@@ -130,6 +130,8 @@ class STIP(nn.Module):
 
         if not self.args.clip2:
             self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
+            # self.encode_features = self.classifier_clip_proj(self.encode_features)
+            self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
         else:
             self.before_action_embed = make_fc(self.args.hidden_dim, 512)
             self.action_embed = nn.Linear(512, self.args.num_actions)
@@ -502,8 +504,6 @@ class STIP(nn.Module):
             #         outs_intermediate.append(text_atten_output.unsqueeze(0))
             #     outs = torch.cat(outs_intermediate, dim=0)
             if self.args.clip2:
-                self.encode_features = self.classifier_clip_proj(self.encode_features)
-                self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
                 outs = self.before_action_embed(outs)
             action_logits = self.action_embed(outs)
 
