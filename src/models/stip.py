@@ -56,7 +56,7 @@ class STIP(nn.Module):
                 # wordpair_list = ["a scene of " + k for k in self.verb_list]
                 # text_token = clip.tokenize(wordpair_list).to(self.args.device)
                 # self.encode_features = self.clip_model.encode_text(text_token).to(torch.float32)
-                self.encode_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
+                self.encode_features = np.load(r"D:\DD\STIP_or\llava-med-emb.npy")
                 self.encode_features = torch.from_numpy(self.encode_features).to(self.args.device)
                 self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
                 self.encode_features = self.encode_features[-14:, :512].to(torch.float32)
@@ -637,7 +637,7 @@ class STIPCriterion(nn.Module):
             # self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
             self.word_proj = make_fc(4096, 256)
             # self.classifier_clip_proj = make_fc(4096, 512)
-            self.word_features = np.load(r"/cluster/work/cvl/denfan/diandian/feat.npy")
+            self.word_features = np.load(r"D:\DD\STIP_or\llava-med-emb.npy")
             self.word_features = torch.from_numpy(self.word_features).to(self.args.device)
             self.word_features = torch.sum(self.word_features, dim=1) / 1024.
             self.word_features = self.word_features[:686, :]

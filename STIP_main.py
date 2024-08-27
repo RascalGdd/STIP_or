@@ -296,8 +296,8 @@ if __name__ == '__main__':
     # prior embedding
     parser.add_argument('--use_prior', action='store_true', default=False)
     parser.add_argument('--use_tricks', action='store_true', default=False)
-    parser.add_argument('--use_tricks_val', action='store_true', default=False)
-    parser.add_argument('--add_none', action='store_true', default=False)
+    parser.add_argument('--use_tricks_val', action='store_false', default=True)
+    parser.add_argument('--add_none', action='store_false', default=True)
 
     # not sensitive or effective
     parser.add_argument('--use_memory_union_mask', action='store_true', default=False)
@@ -323,8 +323,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_feature_levels', default=1, type=int)
 
     # CLIP arguments
-    parser.add_argument('--clip1', action='store_true', default=False)
-    parser.add_argument('--clip2', action='store_true', default=False)
+    parser.add_argument('--clip1', action='store_false', default=True)
+    parser.add_argument('--clip2', action='store_false', default=True)
 
 
     args = parser.parse_args()
