@@ -75,14 +75,15 @@ def or_evaluate(model, postprocessors, data_loader, device, thr, args):
     hoi_recognition_time = []
     names = []
 
-    for samples, targets, multiview_samples, points, video_samples, depths in metric_logger.log_every(data_loader, 50, header):
+    for samples, targets, multiview_samples, points, video_samples, depths, points_video in metric_logger.log_every(data_loader, 50, header):
         samples = samples.to(device)
         multiview_samples = multiview_samples.to(device)
         video_samples = video_samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         points = torch.cat([p.unsqueeze(0) for p in points], dim=0).to(device)
+        points_video = torch.cat([p.to(device).unsqueeze(0) for p in points_video], dim=0)
 
-        outputs = model(samples, None, multiview_samples, points, video_samples, depths)
+        outputs = model(samples, None, multiview_samples, points, video_samples, depths, points_video)
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessors['hoi'](outputs, orig_target_sizes, threshold=thr, dataset='or')
         hoi_recognition_time.append(results[0]['hoi_recognition_time'] * 1000)

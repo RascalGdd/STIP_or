@@ -6,16 +6,10 @@ from torchvision.ops import roi_align
 from .transformer import TransformerDecoderLayer, TransformerDecoder, TemporalFusion, TransformerEncoderLayer, TransformerEncoder,  TransformerDecoderLayer_multiview
 from src.util import box_ops
 import numpy as np
-import matplotlib.pyplot as plt
 from src.util.misc import accuracy, is_dist_avail_and_initialized, get_world_size
-from src.models.tritempor_utils import check_annotation
 import time
 from .backbone_module import Pointnet2Backbone
-import PIL
-from matplotlib import colormaps
-# from torchvision.transforms.functional import to_pil_image
-# from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
-import clip
+from .pointtemp import P4Transformer
 from torch.nn import L1Loss
 from src.models.tritempor_utils import projection
 
@@ -27,15 +21,10 @@ class TRITEMPOR(nn.Module):
         # * Instance Transformer ---------------
         self.detr = detr
         self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
-
-
-        # self.classifier_query_proj = make_fc(512, 256)
-        self.classifier_clip_proj = make_fc(4096, 512)
-        # self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
-        #                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
-        # wordpair_list = ["a scene of " + k for k in self.verb_list]
-        # text_token = clip.tokenize(wordpair_list).to(self.args.device)
-        # self.encode_features = self.clip_model.encode_text(text_token).to(torch.float32)
+        self.p4trans = P4Transformer()
+        # self.classifier_clip_proj = nn.AvgPool1d(512)
+        #
+        # # self.classifier_clip_proj = make_fc(4096, 512)
         self.encode_features = np.load(r"D:\DD\STIP_or\llava-med-emb.npy")
         self.encode_features = torch.from_numpy(self.encode_features).to(self.args.device)
         self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
@@ -103,15 +92,15 @@ class TRITEMPOR(nn.Module):
 
         self.temporalfusion = TemporalFusion(in_ch=256, out_ch=256)
 
-        text_decoder_layer = TransformerDecoderLayer_multiview(self.args.hidden_dim, self.args.hoi_nheads)
-        text_decoder_norm = nn.LayerNorm(self.args.hidden_dim)
-        self.text_attention = TransformerDecoder(text_decoder_layer, 2, text_decoder_norm, return_intermediate=False)
+        # text_decoder_layer = TransformerDecoderLayer_multiview(self.args.hidden_dim, self.args.hoi_nheads)
+        # text_decoder_norm = nn.LayerNorm(self.args.hidden_dim)
+        # self.text_attention = TransformerDecoder(text_decoder_layer, 2, text_decoder_norm, return_intermediate=False)
 
         self.before_action_embed = make_fc(self.args.hidden_dim, 512)
         self.action_embed = nn.Linear(512, self.args.num_actions)
         self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
 
-    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None, depths=None):
+    def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None, depths=None, points_video=None):
         # if isinstance(samples, (list, torch.Tensor)):
         #     samples = nested_tensor_from_tensor_list(samples)
 
@@ -187,6 +176,10 @@ class TRITEMPOR(nn.Module):
                 point_xyz = point_xyzs[j]
                 point_2dxy.append(torch.tensor(projection(point_xyz)/torch.tensor([2048, 1536])).unsqueeze(0))
             point_2dxy = torch.cat(point_2dxy, dim=0)
+
+            point_features_p4 = self.p4trans(points, points_video)
+            point_features += point_features_p4
+
         else:
             point_features = None
 
@@ -674,7 +667,7 @@ class STIPCriterion(nn.Module):
         # text_token = clip.tokenize(wordpair_list).to(self.args.device)
         # encode_features = self.clip_model.encode_text(text_token)
         # self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
-        self.word_proj = make_fc(4096, 256)
+        self.word_proj = nn.AvgPool1d(kernel_size=16, stride=16)
         # self.classifier_clip_proj = make_fc(4096, 512)
         self.word_features = np.load(r"D:\DD\STIP_or\llava-med-emb.npy")
         self.word_features = torch.from_numpy(self.word_features).to(self.args.device)
@@ -926,12 +919,7 @@ class STIPCriterion(nn.Module):
             mimic_y = self.word_features[total_index, :].to(torch.float32)
             mimic_y = self.word_proj(mimic_y)
             loss += self.mimic_loss_func(mimic_x, mimic_y)
-        #
-        # query_indexes = targets.nonzero()[:, 0]
-        # action_indexes = targets.nonzero()[:, 1]
-        # mimic_x = inputs[query_indexes].squeeze(1)
-        # mimic_y = self.word_features[action_indexes, :].to(torch.float32)
-        # mimic_y = self.word_proj(mimic_y)
+
         return loss
 
 class STIPPostProcess(nn.Module):

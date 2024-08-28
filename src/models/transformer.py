@@ -474,8 +474,8 @@ def build_transformer(args):
         dropout=args.dropout,
         nhead=args.nheads,
         dim_feedforward=args.dim_feedforward,
-        num_encoder_layers=args.enc_layers,
-        num_decoder_layers=args.dec_layers,
+        num_encoder_layers=2,
+        num_decoder_layers=2,
         normalize_before=args.pre_norm,
         return_intermediate_dec=True,
         multiview=args.use_multiviewfusion,
@@ -544,7 +544,7 @@ class TemporalFusion(nn.Module):
 
         temporalFusion_layer = TransformerEncoderLayer(out_ch, 4, 2048)
         temporalFusion_norm = nn.LayerNorm(256)
-        self.temporalFusion = TransformerEncoder(temporalFusion_layer, 2, temporalFusion_norm,)
+        self.temporalFusion = TransformerEncoder(temporalFusion_layer, 1, temporalFusion_norm,)
 
         self.mlp = make_fc(out_ch * len(self.kernels_list1), 2048)
         # self.temporal_proj_back = nn.Conv2d(in_channels=256, out_channels=2048, kernel_size=(1,1), stride=(1,1))
