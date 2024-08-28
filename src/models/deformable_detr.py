@@ -22,10 +22,6 @@ from src.util.misc import (NestedTensor, nested_tensor_from_tensor_list,
 
 from .backbone import build_backbone
 from .detr_matcher import build_matcher
-# from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
-#                            dice_loss, sigmoid_focal_loss)
-from .criterion import SetCriterion
-from .post_process import PostProcess
 from .feed_forward import MLP
 from .deformable_transformer import build_deforamble_transformer
 import copy

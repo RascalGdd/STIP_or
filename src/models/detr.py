@@ -16,10 +16,7 @@ from src.util.misc import (NestedTensor, nested_tensor_from_tensor_list)
 
 from .backbone import build_backbone
 from .detr_matcher import build_matcher
-from .hotr_matcher import build_hoi_matcher
 from .transformer import build_transformer, build_hoi_transformer
-from .criterion import SetCriterion
-from .post_process import PostProcess
 from .feed_forward import MLP
 from .tritempor import TRITEMPOR, STIPPostProcess, STIPCriterion
 

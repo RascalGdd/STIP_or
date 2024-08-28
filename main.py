@@ -13,12 +13,11 @@ from torch.utils.data import DataLoader, DistributedSampler
 import src.data.datasets as datasets
 import src.util.misc as utils
 from src.engine.arg_parser import get_args_parser
-from src.data.datasets import build_dataset, get_coco_api_from_dataset
+from src.data.datasets import build_dataset
 from src.engine.trainer import train_one_epoch
-from src.engine import hoi_evaluator, hoi_accumulator
+from src.engine import hoi_evaluator
 from src.models import build_model
 # import wandb
-from src.engine.evaluator_coco import coco_evaluate
 
 from src.util.logger import print_params, print_args
 from collections import OrderedDict
@@ -154,29 +153,8 @@ def main(args):
         return
 
     if args.eval:
-        # test only mode
-        if args.HOIDet:
-            if args.dataset_file == 'vcoco':
-                total_res = hoi_evaluator(args, model, criterion, postprocessors, data_loader_val, device)
-                sc1, sc2 = hoi_accumulator(args, total_res, True, False)
-            elif args.dataset_file == 'or':
-                total_res = hoi_evaluator(args, model, criterion, postprocessors, data_loader_val, device)
-                # sc1, sc2 = hoi_accumulator(args, total_res, True, False)
-            elif args.dataset_file == 'hico-det':
-                test_stats = hoi_evaluator(args, model, None, postprocessors, data_loader_val, device)
-                print(f'| mAP (full)\t\t: {test_stats["mAP"]:.2f}')
-                print(f'| mAP (rare)\t\t: {test_stats["mAP rare"]:.2f}')
-                print(f'| mAP (non-rare)\t: {test_stats["mAP non-rare"]:.2f}')
-            else: raise ValueError(f'dataset {args.dataset_file} is not supported.')
-            return
-        else:
-            # check original detr code
-            base_ds = get_coco_api_from_dataset(data_loader_val)
-            test_stats, coco_evaluator = coco_evaluate(model, criterion, postprocessors,
-                                                  data_loader_val, base_ds, device, args.output_dir)
-            if args.output_dir:
-                utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, args.output_dir / "eval.pth")
-            return
+        total_res = hoi_evaluator(args, model, criterion, postprocessors, data_loader_val, device)
+        return
 
     # stats
     scenario1, scenario2 = 0, 0
@@ -206,35 +184,7 @@ def main(args):
         # Validation
         if args.validate and epoch >= 40:
             print('-'*100)
-            if args.dataset_file == 'vcoco':
-                total_res = hoi_evaluator(args, model, criterion, postprocessors, data_loader_val, device)
-                if utils.get_rank() == 0:
-                    sc1, sc2 = hoi_accumulator(args, total_res, False, args.wandb)
-                    if sc1 > scenario1:
-                        scenario1 = sc1
-                        scenario2 = sc2
-                        save_ckpt(args, model_without_ddp, optimizer, lr_scheduler, epoch, filename='best')
-                    print(f'| Scenario #1 mAP : {sc1:.2f} ({scenario1:.2f})')
-                    print(f'| Scenario #2 mAP : {sc2:.2f} ({scenario2:.2f})')
-                    if isinstance(lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau): lr_scheduler.step(sc1)
-            elif args.dataset_file == 'hico-det':
-                test_stats = hoi_evaluator(args, model, None, postprocessors, data_loader_val, device)
-                if utils.get_rank() == 0:
-                    if test_stats['mAP'] > best_mAP:
-                        best_mAP = test_stats['mAP']
-                        best_rare = test_stats['mAP rare']
-                        best_non_rare = test_stats['mAP non-rare']
-                        save_ckpt(args, model_without_ddp, optimizer, lr_scheduler, epoch, filename='best')
-                    print(f'| mAP (full)\t\t: {test_stats["mAP"]:.2f} ({best_mAP:.2f})')
-                    print(f'| mAP (rare)\t\t: {test_stats["mAP rare"]:.2f} ({best_rare:.2f})')
-                    print(f'| mAP (non-rare)\t: {test_stats["mAP non-rare"]:.2f} ({best_non_rare:.2f})')
-                    # if args.wandb and utils.get_rank() == 0:
-                    #     wandb.log({
-                    #         'mAP': test_stats['mAP']
-                    #     })
-                    if isinstance(lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau): lr_scheduler.step(test_stats['mAP'])
-            elif args.dataset_file == 'or':
-                test_stats = hoi_evaluator(args, model, None, postprocessors, data_loader_val, device)
+            test_stats = hoi_evaluator(args, model, None, postprocessors, data_loader_val, device)
         save_ckpt(args, model_without_ddp, optimizer, lr_scheduler, epoch, filename=f'checkpoint_{epoch}')
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -295,9 +245,9 @@ if __name__ == '__main__':
 
     # prior embedding
     parser.add_argument('--use_prior', action='store_true', default=False)
-    parser.add_argument('--use_tricks', action='store_true', default=False)
-    parser.add_argument('--use_tricks_val', action='store_true', default=False)
-    parser.add_argument('--add_none', action='store_true', default=False)
+    parser.add_argument('--use_tricks', action='store_false', default=True)
+    parser.add_argument('--use_tricks_val', action='store_false', default=True)
+    parser.add_argument('--add_none', action='store_false', default=True)
 
     # not sensitive or effective
     parser.add_argument('--use_memory_union_mask', action='store_true', default=False)
