@@ -68,7 +68,7 @@ If you wish to download the datasets on our own directory, simply change the 'da
 ### 3. Training/Testing on V-COCO
 
 ```shell
-python STIP_main.py --validate \
+python main.py --validate \
     --num_hoi_queries 32 --batch_size 4 --lr 5e-5 --HOIDet --hoi_aux_loss --no_aux_loss \ 
     --dataset_file vcoco  --data_path v-coco --detr_weights https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth \
     --output_dir checkpoints/vcoco --group_name STIP_debug --run_name vcoco_run1
@@ -80,7 +80,7 @@ python STIP_main.py --validate \
 
 Training with pretrained DETR detector on COCO.
 ```shell
-python STIP_main.py --validate \ 
+python main.py --validate \ 
     --num_hoi_queries 32 --batch_size 4 --lr 5e-5 --HOIDet --hoi_aux_loss --no_aux_loss \
     --dataset_file hico-det --data_path hico_20160224_det --detr_weights https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth \
     --output_dir checkpoints/hico-det --group_name STIP_debug --run_name hicodet_run1
@@ -88,7 +88,7 @@ python STIP_main.py --validate \
 
 Jointly fine-tune object detector & HOI detector
 ```shell
-python STIP_main.py --validate \
+python main.py --validate \
     --num_hoi_queries 32 --batch_size 2 --lr 1e-5 --HOIDet --hoi_aux_loss \
     --dataset_file hico-det --data_path hico_20160224_det \
     --output_dir checkpoints/hico-det --group_name STIP_debug --run_name hicodet_run1/jointly-tune \

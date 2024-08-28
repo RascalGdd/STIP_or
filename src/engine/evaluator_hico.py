@@ -11,7 +11,7 @@ import torch
 import src.util.misc as utils
 import src.util.logger as loggers
 from src.data.evaluators.hico_eval import HICOEvaluator
-from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
+from src.models.tritempor_utils import check_annotation, plot_cross_attention, plot_hoi_results
 
 @torch.no_grad()
 def hico_evaluate(model, postprocessors, data_loader, device, thr, args):

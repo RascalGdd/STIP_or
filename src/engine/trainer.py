@@ -12,7 +12,7 @@ import src.util.misc as utils
 import src.util.logger as loggers
 from typing import Iterable
 # import wandb
-from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
+from src.models.tritempor_utils import check_annotation, plot_cross_attention, plot_hoi_results
 import time
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,

@@ -29,8 +29,7 @@ from .post_process import PostProcess
 from .feed_forward import MLP
 from .deformable_transformer import build_deforamble_transformer
 import copy
-from .hotr import HOTR
-from .stip import STIP, STIPPostProcess, STIPCriterion
+from .tritempor import TRITEMPOR, STIPPostProcess, STIPCriterion
 
 
 def _get_clones(module, N):

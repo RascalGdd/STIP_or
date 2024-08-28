@@ -11,7 +11,7 @@ from sklearn.metrics import classification_report
 import src.util.misc as utils
 import src.util.logger as loggers
 from src.data.evaluators.or_eval import OREvaluator
-from src.models.stip_utils import check_annotation, plot_cross_attention, plot_hoi_results
+from src.models.tritempor_utils import check_annotation, plot_cross_attention, plot_hoi_results
 import json
 
 OBJECT_LABEL_MAP = {

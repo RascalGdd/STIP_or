@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
-from .stip_utils import MultiheadAttention
+from .tritempor_utils import MultiheadAttention
 from .attention import MMG_teacher
 from .feed_forward import MLP
 from PIL import Image

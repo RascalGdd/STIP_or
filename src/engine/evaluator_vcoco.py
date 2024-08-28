@@ -14,7 +14,7 @@ import src.util.misc as utils
 import src.util.logger as loggers
 from src.data.evaluators.vcoco_eval import VCocoEvaluator
 from src.util.box_ops import rescale_bboxes, rescale_pairs
-from src.models.stip_utils import check_annotation, plot_cross_attention
+from src.models.tritempor_utils import check_annotation, plot_cross_attention
 
 #import wandb
 
