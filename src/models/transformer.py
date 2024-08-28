@@ -517,20 +517,20 @@ class TemporalFusion(nn.Module):
         self.temporal_proj = nn.Conv2d(in_channels=2048, out_channels=256, kernel_size=(1,1), stride=(1,1))
         self.kernels_list1 = nn.ModuleList([nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(1,1), stride=(1,1),
                                                   padding='same'),
-                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(2, 2), stride=(1,1),
-                                                  padding='same'),
                                         nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(3, 3), stride=(1,1),
                                                   padding='same'),
-                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(4, 4), stride=(1,1),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(5, 5), stride=(1,1),
+                                                  padding='same'),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(7, 7), stride=(1,1),
                                                   padding='same')
                                         ])
-        self.kernels_list2 = nn.ModuleList([nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(1,1), stride=(1,1),
+        self.kernels_list2 = nn.ModuleList([nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(3, 3), stride=(1,1),
                                                   padding='same'),
-                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(2, 2), stride=(1,1),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(5, 5), stride=(1,1),
                                                   padding='same'),
-                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(3, 3), stride=(1,1),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(7, 7), stride=(1,1),
                                                   padding='same'),
-                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(4, 4), stride=(1,1),
+                                        nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=(9, 9), stride=(1,1),
                                                   padding='same')
                                         ])
         self.x_embed = nn.Parameter(torch.zeros([1, out_ch, 1]))

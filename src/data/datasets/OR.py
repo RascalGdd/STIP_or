@@ -106,7 +106,7 @@ class MultiView_CocoDetection(VisionDataset):
 
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
-        self.views = [2, 3, 6]
+        self.views = [6]
 
     def _load_image(self, id: int) -> Image.Image:
         path = self.coco.loadImgs(id)[0]["file_name"]
@@ -149,7 +149,10 @@ class MultiView_CocoDetection(VisionDataset):
         else:
             video_ids = [id-1, id+1]
             path_video = [self.coco.loadImgs(id)[0]["file_name"] for id in video_ids]
-            return [Image.open(os.path.join(self.root, path)).convert("RGB") for path in path_video]
+
+        for j in range(2):
+            path_video.append(path_video[j].replace('.jpg', "_view6.jpg"))
+        return [Image.open(os.path.join(self.root, path)).convert("RGB") for path in path_video]
 
 
     def _load_target(self, id: int) -> List[Any]:

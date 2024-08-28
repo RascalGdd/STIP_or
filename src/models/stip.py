@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.util.misc import NestedTensor, nested_tensor_from_tensor_list
 from torchvision.ops import roi_align
-from .transformer import TransformerDecoderLayer, TransformerDecoder, TemporalFusion, TransformerEncoderLayer, TransformerEncoder
+from .transformer import TransformerDecoderLayer, TransformerDecoder, TemporalFusion, TransformerEncoderLayer, TransformerEncoder,  TransformerDecoderLayer_multiview
 from src.util import box_ops
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,6 +15,8 @@ import PIL
 from matplotlib import colormaps
 # from torchvision.transforms.functional import to_pil_image
 # from .deformable_transformer import DeformableTransformer, DeformableTransformerDecoderLayer
+import clip
+from torch.nn import L1Loss
 
 class STIP(nn.Module):
     def __init__(self, args, detr, detr_matcher):
@@ -24,6 +26,20 @@ class STIP(nn.Module):
         # * Instance Transformer ---------------
         self.detr = detr
         self.backbone_net = Pointnet2Backbone(input_feature_dim=3, width=1)
+
+
+        # self.classifier_query_proj = make_fc(512, 256)
+        self.classifier_clip_proj = make_fc(4096, 512)
+        # self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+        #                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+        # wordpair_list = ["a scene of " + k for k in self.verb_list]
+        # text_token = clip.tokenize(wordpair_list).to(self.args.device)
+        # self.encode_features = self.clip_model.encode_text(text_token).to(torch.float32)
+        self.encode_features = np.load(r"D:\DD\STIP_or\llava-med-emb.npy")
+        self.encode_features = torch.from_numpy(self.encode_features).to(self.args.device)
+        self.encode_features = torch.sum(self.encode_features, dim=1) / 1024.
+        self.encode_features = self.encode_features[-14:, :512].to(torch.float32)
+
         if not args.train_detr:
             # if this flag is given, freeze the object detection related parameters of DETR
             for p in self.parameters():
@@ -83,9 +99,16 @@ class STIP(nn.Module):
             decoder_layer = TransformerDecoderLayer(d_model=self.args.hidden_dim, nhead=self.args.hoi_nheads)
             decoder_norm = nn.LayerNorm(self.args.hidden_dim)
             self.interaction_decoder = TransformerDecoder(decoder_layer, self.args.hoi_dec_layers, decoder_norm, return_intermediate=True)
-        self.action_embed = nn.Linear(self.args.hidden_dim, self.args.num_actions)
-        if self.args.temporal1:
-            self.temporalfusion = TemporalFusion(in_ch=256, out_ch=256)
+
+        self.temporalfusion = TemporalFusion(in_ch=256, out_ch=256)
+
+        text_decoder_layer = TransformerDecoderLayer_multiview(self.args.hidden_dim, self.args.hoi_nheads)
+        text_decoder_norm = nn.LayerNorm(self.args.hidden_dim)
+        self.text_attention = TransformerDecoder(text_decoder_layer, 2, text_decoder_norm, return_intermediate=False)
+
+        self.before_action_embed = make_fc(self.args.hidden_dim, 512)
+        self.action_embed = nn.Linear(512, self.args.num_actions)
+        self.action_embed.weight.data = self.encode_features / self.encode_features.norm(dim=-1, keepdim=True)
 
     def forward(self, samples: NestedTensor, targets=None, multiview_samples=None, points=None, video_samples=None, depths=None):
         # if isinstance(samples, (list, torch.Tensor)):
@@ -106,14 +129,26 @@ class STIP(nn.Module):
         features_video, pos_video = self.detr.backbone(video_samples)
         features_video[0].tensors.detach()
         bs = features[-1].tensors.shape[0]
-        if self.args.temporal1:
-            x_fused_list = []
-            for batch_id in range(bs):
-                x_features = features[-1].tensors[batch_id].unsqueeze(0)
-                y_features = features_video[-1].tensors[0::2][batch_id].unsqueeze(0)
-                z_features = features_video[-1].tensors[1::2][batch_id].unsqueeze(0)
-                x_fused_list.append(self.temporalfusion(x_features, y_features, z_features, view=1))
-            features[-1].tensors = torch.cat(x_fused_list, dim=0)
+
+        x_fused_list = []
+        for batch_id in range(bs):
+            x_features = features[-1].tensors[batch_id:batch_id+1]
+            y_features = features_video[-1].tensors[0::4][batch_id:batch_id+1]
+            z_features = features_video[-1].tensors[1::4][batch_id:batch_id+1]
+            x_fused_list.append(self.temporalfusion(x_features, y_features, z_features, view=1))
+        features[-1].tensors = torch.cat(x_fused_list, dim=0)
+
+        x_fused_list_view6 = []
+        for batch_id in range(bs):
+            x_features_view6 = features_multiview[-1].tensors[batch_id:batch_id+1]
+            y_features_view6 = features_video[-1].tensors[2::4][batch_id:batch_id+1]
+            z_features_view6 = features_video[-1].tensors[3::4][batch_id:batch_id+1]
+            # result = self.temporalfusion(x_features_view6, y_features_view6, z_features_view6, view=2)
+            x_fused_list_view6.append(self.temporalfusion(x_features_view6, y_features_view6, z_features_view6, view=2))
+        features_multiview[-1].tensors = torch.cat(x_fused_list_view6, dim=0)
+        # features_multiview[-1].tensors = torch.cat(x_fused_list_view6, dim=0)
+        # features[-1].tensors = torch.cat(x_fused_list_view6, dim=0)
+
 
         if self.args.num_feature_levels > 1:
             srcs = []
@@ -194,6 +229,7 @@ class STIP(nn.Module):
 
         # >>>>>>>>>>>> HOI DETECTION LAYERS <<<<<<<<<<<<<<<
         pred_rel_exists, pred_rel_pairs, pred_actions = [], [], []
+        query_outs = []
         memory_input, memory_input_mask = features[-1].decompose()
         memory_input_multiview, memory_input_mask_multiview = features_multiview[-1].decompose()
         memory_pos = pos[-1] if self.args.num_feature_levels == 1 else pos[-2]
@@ -236,35 +272,61 @@ class STIP(nn.Module):
                     rel_mat[tmp_id] = 1
 
             if self.training:
-                rel_mat[gt_rel_pairs[imgid][:,:1], ~bg_instance_ids] = 1
-                rel_mat[gt_rel_pairs[imgid][:,0], gt_rel_pairs[imgid][:, 1]] = 0
-                rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device) # neg pairs
+                rel_mat[gt_rel_pairs[imgid][:, :1], ~bg_instance_ids] = 1
+                rel_mat[gt_rel_pairs[imgid][:, 0], gt_rel_pairs[imgid][:, 1]] = 0
+                rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device)  # neg pairs
 
                 if self.args.use_hard_mining_for_relation_discovery:
                     # hard negative sampling
                     all_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs], dim=0)
                     gt_pair_count = len(gt_rel_pairs[imgid])
-                    all_rel_reps = self.coarse_relation_feature_extractor(all_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview, features_video=relation_feature_map_video)
+
+                    all_rel_reps, union_feats = self.coarse_relation_feature_extractor(all_pairs,
+                                                                                       relation_feature_map,
+                                                                                       outputs_coord[
+                                                                                           -1, imgid].detach(),
+                                                                                       inst_repr[imgid],
+                                                                                       obj_label_logits=
+                                                                                       outputs_class[-1, imgid],
+                                                                                       idx=imgid,
+                                                                                       features_multiview=relation_feature_map_multiview)
+
                     p_relation_exist_logits = self.relation_proposal_mlp(all_rel_reps)
 
                     gt_inds = torch.arange(gt_pair_count).to(p_relation_exist_logits.device)
                     _, sort_rel_inds = p_relation_exist_logits[gt_pair_count:].squeeze(1).sort(descending=True)
                     # _, sort_rel_inds = torch.cat([inst_scores[all_pairs[:, 1:]], p_relation_exist_logits.sigmoid()], dim=-1).prod(-1)[gt_pair_count:].sort(descending=True)
-                    sampled_rel_inds = torch.cat([gt_inds, sort_rel_inds+gt_pair_count])[:self.args.num_hoi_queries]
+                    sampled_rel_inds = torch.cat([gt_inds, sort_rel_inds + gt_pair_count])[
+                                       :self.args.num_hoi_queries]
 
                     sampled_rel_pairs = all_pairs[sampled_rel_inds]
                     sampled_rel_reps = all_rel_reps[sampled_rel_inds]
+                    sampled_union_feats = union_feats[sampled_rel_inds]
                     sampled_rel_pred_exists = p_relation_exist_logits.squeeze(1)[sampled_rel_inds]
 
                 else:
                     # random sampling
                     sampled_neg_inds = torch.randperm(len(rel_pairs))
-                    sampled_rel_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs[sampled_neg_inds]], dim=0)[:self.args.num_hoi_queries]
-                    sampled_rel_reps = self.coarse_relation_feature_extractor(sampled_rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid)
+                    sampled_rel_pairs = torch.cat([gt_rel_pairs[imgid], rel_pairs[sampled_neg_inds]], dim=0)[
+                                        :self.args.num_hoi_queries]
+                    sampled_rel_reps = self.coarse_relation_feature_extractor(sampled_rel_pairs,
+                                                                              relation_feature_map,
+                                                                              outputs_coord[-1, imgid].detach(),
+                                                                              inst_repr[imgid],
+                                                                              obj_label_logits=outputs_class[
+                                                                                  -1, imgid], idx=imgid)
                     sampled_rel_pred_exists = self.relation_proposal_mlp(sampled_rel_reps).squeeze(1)
             else:
                 rel_pairs = rel_mat.nonzero(as_tuple=False).to(self.args.device)
-                rel_reps = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map, outputs_coord[-1, imgid].detach(), inst_repr[imgid], obj_label_logits=outputs_class[-1, imgid], idx=imgid, features_multiview=relation_feature_map_multiview)
+                rel_reps, union_feats = self.coarse_relation_feature_extractor(rel_pairs, relation_feature_map,
+                                                                               outputs_coord[
+                                                                                   -1, imgid].detach(),
+                                                                               inst_repr[imgid],
+                                                                               obj_label_logits=outputs_class[
+                                                                                   -1, imgid],
+                                                                               idx=imgid,
+                                                                               features_multiview=relation_feature_map_multiview)
+
                 p_relation_exist_logits = self.relation_proposal_mlp(rel_reps)
 
                 _, sort_rel_inds = p_relation_exist_logits.squeeze(1).sort(descending=True)
@@ -273,13 +335,24 @@ class STIP(nn.Module):
 
                 sampled_rel_pairs = rel_pairs[sampled_rel_inds]
                 sampled_rel_reps = rel_reps[sampled_rel_inds]
+                sampled_union_feats = union_feats[sampled_rel_inds]
                 sampled_rel_pred_exists = p_relation_exist_logits.squeeze(1)[sampled_rel_inds]
 
-            # >>>>>>>>>>>> relation classification <<<<<<<<<<<<<<<
+                # if self.args.clip1:
+                #     logit_scale = self.logit_scale.exp()
+                #     sampled_union_feats = self.union_clip_proj(sampled_union_feats).unsqueeze(1)
+                #     sub_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 0]][:, :-1].argmax(1).clamp(max=self.obj_list_length-1)
+                #     obj_index = outputs_class[-1][imgid][sampled_rel_pairs[:, 1]][:, :-1].argmax(1).clamp(max=self.obj_list_length-1)
+                #     total_index = sub_index * self.obj_list_length + obj_index
+                #     text_features = self.word_features_spo[total_index].permute(0, 2, 1)
+                #     text_scores = logit_scale * torch.matmul(sampled_union_feats / sampled_union_feats.norm(dim=-1, keepdim=True), text_features / text_features.norm(dim=1, keepdim=True))
+
+                # >>>>>>>>>>>> relation classification <<<<<<<<<<<<<<<
             if self.args.use_simple_pointsfusion and self.args.use_pointsfusion:
                 points_feats = point_features[imgid]
                 points_feats = self.pointsfeats_proj(points_feats)
-                sampled_rel_reps = sampled_rel_reps + torch.matmul(torch.matmul(sampled_rel_reps, points_feats.transpose(0, 1)), points_feats)
+                sampled_rel_reps = sampled_rel_reps + torch.matmul(
+                    torch.matmul(sampled_rel_reps, points_feats.transpose(0, 1)), points_feats)
 
             query_reps = self.rel_query_pre_proj(sampled_rel_reps).unsqueeze(1)
 
@@ -287,26 +360,40 @@ class STIP(nn.Module):
                 outs = query_reps.unsqueeze(0)
             else:
                 query_pos_encoding, relation_dependency_encodings, layout_encodings, memory_union_mask, tgt_mask = None, None, None, None, None
-                subj_mask, obj_mask, union_mask, _ = self.generate_layout_masks(sampled_rel_pairs, memory_input_mask, outputs_coord[-1, imgid], idx=imgid)
+                subj_mask, obj_mask, union_mask, _ = self.generate_layout_masks(sampled_rel_pairs,
+                                                                                memory_input_mask,
+                                                                                outputs_coord[-1, imgid], idx=imgid)
                 if self.args.use_relation_tgt_mask:
                     tgt_mask = (torch.diag(sampled_rel_pred_exists) != 0)
-                    attend_ids = sampled_rel_pred_exists.sort(descending=True)[1][:self.args.use_relation_tgt_mask_attend_topk]
+                    attend_ids = sampled_rel_pred_exists.sort(descending=True)[1][
+                                 :self.args.use_relation_tgt_mask_attend_topk]
                     tgt_mask[:, attend_ids] = True
-                    tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
+                    tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1,
+                                                                                                      float(0.0))
                 if self.args.use_query_fourier_encoding:
-                    query_coords = self.fourier_feature_embedding(outputs_coord[-1, imgid][sampled_rel_pairs].view(len(sampled_rel_pairs), 8, 1)) / np.sqrt(self.args.hidden_dim/2)
-                    query_pos_encoding = self.fourier_mlp(torch.cat([torch.cos(query_coords), torch.sin(query_coords)], dim=-1)).view(len(sampled_rel_pairs), -1).unsqueeze(1)
+                    query_coords = self.fourier_feature_embedding(
+                        outputs_coord[-1, imgid][sampled_rel_pairs].view(len(sampled_rel_pairs), 8, 1)) / np.sqrt(
+                        self.args.hidden_dim / 2)
+                    query_pos_encoding = self.fourier_mlp(
+                        torch.cat([torch.cos(query_coords), torch.sin(query_coords)], dim=-1)).view(
+                        len(sampled_rel_pairs), -1).unsqueeze(1)
                 if self.args.use_relation_dependency_encoding:
-                    dependency_map = torch.zeros((len(sampled_rel_pairs), len(sampled_rel_pairs))).to(sampled_rel_reps.device).long() # independent: 0
-                    dependency_map[sampled_rel_pairs[:, 0].unsqueeze(1) == sampled_rel_pairs[:, 0].unsqueeze(0)] = 1 # same_subj: 1
-                    dependency_map[sampled_rel_pairs[:, 1].unsqueeze(1) == sampled_rel_pairs[:, 1].unsqueeze(0)] = 2 # same_obj: 2
-                    dependency_map[sampled_rel_pairs[:, 0].unsqueeze(1) == sampled_rel_pairs[:, 1].unsqueeze(0)] = 3 # subj=obj: 3
-                    dependency_map[sampled_rel_pairs[:, 1].unsqueeze(1) == sampled_rel_pairs[:, 0].unsqueeze(0)] = 4 # obj=subj: 4
-                    dependency_map.fill_diagonal_(5) # self: 5
+                    dependency_map = torch.zeros((len(sampled_rel_pairs), len(sampled_rel_pairs))).to(
+                        sampled_rel_reps.device).long()  # independent: 0
+                    dependency_map[sampled_rel_pairs[:, 0].unsqueeze(1) == sampled_rel_pairs[:, 0].unsqueeze(
+                        0)] = 1  # same_subj: 1
+                    dependency_map[sampled_rel_pairs[:, 1].unsqueeze(1) == sampled_rel_pairs[:, 1].unsqueeze(
+                        0)] = 2  # same_obj: 2
+                    dependency_map[sampled_rel_pairs[:, 0].unsqueeze(1) == sampled_rel_pairs[:, 1].unsqueeze(
+                        0)] = 3  # subj=obj: 3
+                    dependency_map[sampled_rel_pairs[:, 1].unsqueeze(1) == sampled_rel_pairs[:, 0].unsqueeze(
+                        0)] = 4  # obj=subj: 4
+                    dependency_map.fill_diagonal_(5)  # self: 5
                     relation_dependency_encodings = self.relation_dependency_embeddings(dependency_map)
                     relation_dependency_encodings = self.relation_dependency_content_aware_mapping(
-                        torch.cat([query_reps.permute(1,0,2).expand(*relation_dependency_encodings.shape), relation_dependency_encodings], dim=-1)
-                    ).unsqueeze(2) # (#query, #query, batch size, dim)
+                        torch.cat([query_reps.permute(1, 0, 2).expand(*relation_dependency_encodings.shape),
+                                   relation_dependency_encodings], dim=-1)
+                    ).unsqueeze(2)  # (#query, #query, batch size, dim)
                 if self.args.use_prior:
                     sampled_rel_class_logits = torch.cat(
                         [outputs_class[-1, imgid][:, :-1][sampled_rel_pairs[:, 0]].unsqueeze(-1),
@@ -316,109 +403,154 @@ class STIP(nn.Module):
                         sampled_rel_reps.device).long()
                     prior_map[sampled_rel_class[:, 0] <= 4] = 1
                     prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 8) * (
-                                sampled_rel_class[:, 1] >= 6) * (sampled_rel_class[:, 1] <= 8)] = 2
+                            sampled_rel_class[:, 1] >= 6) * (sampled_rel_class[:, 1] <= 8)] = 2
                     prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 7) * (
-                                sampled_rel_class[:, 1] == 5)] = 3
+                            sampled_rel_class[:, 1] == 5)] = 3
                     prior_map[(sampled_rel_class[:, 0] == 8) * (sampled_rel_class[:, 1] == 5)] = 4
                     prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 8) * (
-                                sampled_rel_class[:, 1] == 4)] = 5
+                            sampled_rel_class[:, 1] == 4)] = 5
                     prior_map[(sampled_rel_class[:, 0] >= 6) * (sampled_rel_class[:, 0] <= 7) * (
-                                sampled_rel_class[:, 1] == 1)] = 6
+                            sampled_rel_class[:, 1] == 1)] = 6
                     prior_encodings = self.prior_embeddings(prior_map)
                     query_pos_encoding = prior_encodings
 
                 if self.args.use_memory_union_mask:
                     memory_union_mask = union_mask.flatten(1)
                 if self.args.use_memory_layout_encoding:
-                    layout_map = (~union_mask).long() + (~memory_input_mask[imgid:imgid+1]).long() + (~subj_mask).long() + (~obj_mask).long()*2
+                    layout_map = (~union_mask).long() + (~memory_input_mask[imgid:imgid + 1]).long() + (
+                        ~subj_mask).long() + (~obj_mask).long() * 2
                     # plt.imshow(role_map[0].cpu().numpy(), cmap=plt.cm.hot_r); plt.colorbar(); plt.show()
                     layout_encodings = self.layout_embeddings(layout_map)
                     layout_encodings = self.layout_content_aware_mapping(
-                        torch.cat([memory_input[imgid:imgid+1].permute(0,2,3,1).expand(*layout_encodings.shape), layout_encodings], dim=-1)
-                    ).flatten(start_dim=1, end_dim=2).unsqueeze(2) # (#query, #memory, batch size, dim)
-
+                        torch.cat(
+                            [memory_input[imgid:imgid + 1].permute(0, 2, 3, 1).expand(*layout_encodings.shape),
+                             layout_encodings], dim=-1)
+                    ).flatten(start_dim=1, end_dim=2).unsqueeze(2)  # (#query, #memory, batch size, dim)
 
                 if self.args.use_multiviewfusion_last_all:
                     memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
-                                              memory_input_multiview.split(3, dim=0)[imgid].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
+                                                   memory_input_multiview.split(3, dim=0)[imgid].flatten(2).permute(
+                                                       0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
-                                                   memory_input_mask_multiview.split(3, dim=0)[imgid].flatten(
-                                                       1).flatten(0).unsqueeze(0)], dim=1)
+                                                        memory_input_mask_multiview.split(3, dim=0)[imgid].flatten(
+                                                            1).flatten(0).unsqueeze(0)], dim=1)
                     memory_pos_last = torch.cat([memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
-                                            memory_pos_multiview.split(3, dim=0)[imgid].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
-                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*3, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
+                                                 memory_pos_multiview.split(3, dim=0)[imgid].flatten(2).permute(0,
+                                                                                                                2,
+                                                                                                                1).flatten(
+                                                     0, 1).unsqueeze(1)], dim=0)
+                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0],
+                                                                                     layout_encodings.shape[1] * 3,
+                                                                                     layout_encodings.shape[2],
+                                                                                     layout_encodings.shape[
+                                                                                         3], ).to(
+                        self.args.device)], dim=1)
 
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
                                                     query_pos=query_pos_encoding,
-                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
+                                                    query_structure_encoding=relation_dependency_encodings,
+                                                    # inter-ineraction semantic structure
                                                     memory=memory_input_last,
                                                     memory_key_padding_mask=memory_input_mask_last,
                                                     memory_mask=memory_union_mask,
                                                     pos=memory_pos_last,
-                                                    memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
+                                                    memory_role_embedding=layout_encodings_last)  # intra-ineraction spatial structure
 
 
                 elif self.args.use_multiviewfusion_last_view2:
                     memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
-                                              memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1),memory_input_multiview[0::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
+                                                   memory_input_multiview[imgid:imgid + 1].flatten(2).permute(
+                                                       0, 2, 1).flatten(0, 1).unsqueeze(1),
+                                                   memory_input_multiview[0::3][imgid:imgid + 1].flatten(2).permute(
+                                                       0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
-                                                   memory_input_mask_multiview[2::3][imgid:imgid + 1].flatten(
-                                                       1).flatten(0).unsqueeze(0), memory_input_mask_multiview[0::3][imgid:imgid + 1].flatten(
-                                                       1).flatten(0).unsqueeze(0)], dim=1)
+                                                        memory_input_mask_multiview[imgid:imgid + 1].flatten(
+                                                            1).flatten(0).unsqueeze(0),
+                                                        memory_input_mask_multiview[0::3][imgid:imgid + 1].flatten(
+                                                            1).flatten(0).unsqueeze(0)], dim=1)
                     memory_pos_last = torch.cat([memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
-                                            memory_pos_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1), memory_pos_multiview[0::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
-                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*2, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
+                                                 memory_pos_multiview[imgid:imgid + 1].flatten(2).permute(0,
+                                                                                                                2,
+                                                                                                                1).flatten(
+                                                     0, 1).unsqueeze(1),
+                                                 memory_pos_multiview[0::3][imgid:imgid + 1].flatten(2).permute(0,
+                                                                                                                2,
+                                                                                                                1).flatten(
+                                                     0, 1).unsqueeze(1)], dim=0)
+                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0],
+                                                                                     layout_encodings.shape[1] * 2,
+                                                                                     layout_encodings.shape[2],
+                                                                                     layout_encodings.shape[
+                                                                                         3], ).to(
+                        self.args.device)], dim=1)
 
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
                                                     query_pos=query_pos_encoding,
-                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
+                                                    query_structure_encoding=relation_dependency_encodings,
+                                                    # inter-ineraction semantic structure
                                                     memory=memory_input_last,
                                                     memory_key_padding_mask=memory_input_mask_last,
                                                     memory_mask=memory_union_mask,
                                                     pos=memory_pos_last,
-                                                    memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
+                                                    memory_role_embedding=layout_encodings_last)  # intra-ineraction spatial structure
 
                 elif self.args.use_multiviewfusion_last:
                     memory_input_last = torch.cat([memory_input[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
-                                              memory_input_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
+                                                   memory_input_multiview[imgid:imgid + 1].flatten(2).permute(
+                                                       0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
                     memory_input_mask_last = torch.cat([memory_input_mask[imgid:imgid + 1].flatten(1),
-                                                   memory_input_mask_multiview[2::3][imgid:imgid + 1].flatten(
-                                                       1).flatten(0).unsqueeze(0)], dim=1)
+                                                        memory_input_mask_multiview[imgid:imgid + 1].flatten(
+                                                            1).flatten(0).unsqueeze(0)], dim=1)
                     memory_pos_last = torch.cat([memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
-                                            memory_pos_multiview[2::3][imgid:imgid + 1].flatten(2).permute(0, 2, 1).flatten(0, 1).unsqueeze(1)], dim=0)
-                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0], layout_encodings.shape[1]*1, layout_encodings.shape[2], layout_encodings.shape[3],).to(self.args.device)], dim=1)
+                                                 memory_pos_multiview[imgid:imgid + 1].flatten(2).permute(0,
+                                                                                                                2,
+                                                                                                                1).flatten(
+                                                     0, 1).unsqueeze(1)], dim=0)
+                    layout_encodings_last = torch.cat([layout_encodings, torch.zeros(layout_encodings.shape[0],
+                                                                                     layout_encodings.shape[1] * 1,
+                                                                                     layout_encodings.shape[2],
+                                                                                     layout_encodings.shape[
+                                                                                         3], ).to(
+                        self.args.device)], dim=1)
 
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
                                                     query_pos=query_pos_encoding,
-                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
+                                                    query_structure_encoding=relation_dependency_encodings,
+                                                    # inter-ineraction semantic structure
                                                     memory=memory_input_last,
                                                     memory_key_padding_mask=memory_input_mask_last,
                                                     memory_mask=memory_union_mask,
                                                     pos=memory_pos_last,
-                                                    memory_role_embedding=layout_encodings_last) #  intra-ineraction spatial structure
+                                                    memory_role_embedding=layout_encodings_last)  # intra-ineraction spatial structure
 
                 else:
                     outs = self.interaction_decoder(tgt=query_reps,
                                                     tgt_mask=tgt_mask,
                                                     query_pos=query_pos_encoding,
-                                                    query_structure_encoding=relation_dependency_encodings, # inter-ineraction semantic structure
-                                                    memory=memory_input[imgid:imgid+1].flatten(2).permute(2,0,1),
-                                                    memory_key_padding_mask=memory_input_mask[imgid:imgid+1].flatten(1),
+                                                    query_structure_encoding=relation_dependency_encodings,
+                                                    # inter-ineraction semantic structure
+                                                    memory=memory_input[imgid:imgid + 1].flatten(2).permute(2, 0,
+                                                                                                            1),
+                                                    memory_key_padding_mask=memory_input_mask[
+                                                                            imgid:imgid + 1].flatten(1),
                                                     memory_mask=memory_union_mask,
-                                                    pos=memory_pos[imgid:imgid+1].flatten(2).permute(2, 0, 1),
-                                                    memory_role_embedding=layout_encodings) #  intra-ineraction spatial structure
+                                                    pos=memory_pos[imgid:imgid + 1].flatten(2).permute(2, 0, 1),
+                                                    memory_role_embedding=layout_encodings)  # intra-ineraction spatial structure
 
+            outs = self.before_action_embed(outs)
             action_logits = self.action_embed(outs)
 
             pred_rel_pairs.append(sampled_rel_pairs)
             pred_actions.append(action_logits)
             pred_rel_exists.append(sampled_rel_pred_exists)
+            query_outs.append(sampled_union_feats)
 
         hoi_recognition_time = time.time() - start_time
         out = {
+            "query_outs": query_outs,
             "pred_logits": outputs_class[-1],
             "pred_boxes": outputs_coord[-1],
             "pred_rel_pairs": pred_rel_pairs,
@@ -428,10 +560,10 @@ class STIP(nn.Module):
             "hoi_recognition_time": hoi_recognition_time,
         }
         if self.args.hoi_aux_loss: out['hoi_aux_outputs'] = self._set_hoi_aux_loss(pred_actions)
-        if self.args.train_detr and self.args.aux_loss: out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+        if self.args.train_detr and self.args.aux_loss: out['aux_outputs'] = self._set_aux_loss(outputs_class,
+                                                                                                outputs_coord)
 
         return out
-
     @torch.jit.unused
     def _set_hoi_aux_loss(self, pred_actions):
         return [{'pred_actions': [p[l].squeeze(1) for p in pred_actions]} for l in range(self.args.hoi_dec_layers - 1)]
@@ -524,6 +656,27 @@ class STIPCriterion(nn.Module):
         elif args.dataset_file == 'or':
             self.invalid_ids = []
             self.valid_ids = list(range(self.args.num_actions))
+
+
+        # self.clip_model, preprocess = clip.load("ViT-B/32", device=self.args.device)
+        # for para in self.clip_model.parameters():
+        #     para.requires_grad = False
+        # self.verb_list = ["Assisting", "Cementing", "Cleaning", "CloseTo", "Cutting", "Drilling", "Hammering",
+        #                   "Holding", "LyingOn", "Operating", "Preparing", "Sawing", "Suturing", "Touching"]
+        # wordpair_list = ["a scene of " + k for k in self.verb_list]
+        # text_token = clip.tokenize(wordpair_list).to(self.args.device)
+        # encode_features = self.clip_model.encode_text(text_token)
+        # self.word_features = encode_features / encode_features.norm(dim=-1, keepdim=True)
+        self.word_proj = make_fc(4096, 256)
+        # self.classifier_clip_proj = make_fc(4096, 512)
+        self.word_features = np.load(r"D:\DD\STIP_or\llava-med-emb.npy")
+        self.word_features = torch.from_numpy(self.word_features).to(self.args.device)
+        self.word_features = torch.sum(self.word_features, dim=1) / 1024.
+        self.word_features = self.word_features[:686, :]
+
+
+        self.mimic_loss_func = L1Loss()
+
 
         if args.train_detr:
             self.num_classes = args.num_classes
@@ -629,8 +782,10 @@ class STIPCriterion(nn.Module):
 
         # generate relation targets
         all_rel_pair_targets = []
+        det2gt_maps = []
         for imgid, (tgt, (det_idxs, gtbox_idxs)) in enumerate(zip(targets, indices)):
             det2gt_map = {int(d): int(g) for d, g in zip(det_idxs, gtbox_idxs)}
+            det2gt_maps.append(det2gt_map)
             gt_relation_map = tgt['relation_map']
             rel_pairs = outputs['pred_rel_pairs'][imgid]
             rel_pair_targets = torch.zeros((len(rel_pairs), gt_relation_map.shape[-1])).to(gt_relation_map.device)
@@ -638,6 +793,7 @@ class STIPCriterion(nn.Module):
                 if (int(rel[0]) in det2gt_map) and (int(rel[1]) in det2gt_map):
                     rel_pair_targets[idx] = gt_relation_map[det2gt_map[int(rel[0])], det2gt_map[int(rel[1])]]
             all_rel_pair_targets.append(rel_pair_targets)
+        all_rel_pair_targets_remain_batch = all_rel_pair_targets
         all_rel_pair_targets = torch.cat(all_rel_pair_targets, dim=0)
 
         prior_verb_label_mask = None
@@ -655,8 +811,8 @@ class STIPCriterion(nn.Module):
 
         loss_proposal = self.proposal_loss(torch.cat(outputs['pred_action_exists'], dim=0), rel_proposal_targets)
         loss_action = self.action_loss(torch.cat(outputs['pred_actions'], dim=0)[..., self.valid_ids], all_rel_pair_targets[..., self.valid_ids], prior_verb_label_mask)
-
-        loss_dict = {'loss_proposal': loss_proposal, 'loss_act': loss_action}
+        loss_mimic = 0.1 * self.mimic_loss(outputs['query_outs'], all_rel_pair_targets_remain_batch, outputs['pred_rel_pairs'], det2gt_maps, [target['labels'] for target in targets])
+        loss_dict = {'loss_proposal': loss_proposal, 'loss_act': loss_action, 'loss_mimic': loss_mimic}
         if 'hoi_aux_outputs' in outputs:
             for i, aux_outputs in enumerate(outputs['hoi_aux_outputs']):
                 aux_loss = {
@@ -668,7 +824,7 @@ class STIPCriterion(nn.Module):
         if self.args.train_detr:
             # Compute the average number of target boxes accross all nodes, for normalization purposes
             num_boxes = sum(len(t["labels"]) for t in targets)
-            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=self.args.device)
             if is_dist_avail_and_initialized():
                 torch.distributed.all_reduce(num_boxes)
             num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
@@ -742,6 +898,33 @@ class STIPCriterion(nn.Module):
         else:
             loss = -(pos_loss + neg_loss) / num_pos
 
+        return loss
+
+    def mimic_loss(self, inputs, targets, relpairs, det2gts, labels):
+        loss = 0
+        for i in range(len(inputs)):
+            input = inputs[i]
+            target = targets[i]
+            relpair = relpairs[i]
+            det2gt = det2gts[i]
+            label = labels[i]
+            query_index = target.nonzero()[:, 0]
+            gt_label_sbj = torch.tensor([label[det2gt[int(j)]] for j in relpair[query_index][:, 0]]).to(self.args.device)
+            gt_label_sbj = torch.clamp(gt_label_sbj, min=0, max=6)
+            gt_label_obj = torch.tensor([label[det2gt[int(j)]] for j in relpair[query_index][:, 1]]).to(self.args.device)
+            gt_label_obj = torch.clamp(gt_label_obj, min=0, max=6)
+            action_index = target.nonzero()[:, 1].to(self.args.device)
+            total_index = (gt_label_sbj+1)*(gt_label_obj+1)*(action_index+1)-1
+            mimic_x = input[query_index].squeeze(1)
+            mimic_y = self.word_features[total_index, :].to(torch.float32)
+            mimic_y = self.word_proj(mimic_y)
+            loss += self.mimic_loss_func(mimic_x, mimic_y)
+        #
+        # query_indexes = targets.nonzero()[:, 0]
+        # action_indexes = targets.nonzero()[:, 1]
+        # mimic_x = inputs[query_indexes].squeeze(1)
+        # mimic_y = self.word_features[action_indexes, :].to(torch.float32)
+        # mimic_y = self.word_proj(mimic_y)
         return loss
 
 class STIPPostProcess(nn.Module):
@@ -936,14 +1119,14 @@ class RelationFeatureExtractor(nn.Module):
                 fusion_dim += semantic_dim
 
         # union feature
-        if args.use_union_feature or self.args.temporal2:
-            out_ch, union_out_dim = 256, 256
-            self.input_proj = nn.Sequential(
-                nn.Conv2d(in_channels, out_ch, kernel_size=1),
-                nn.ReLU(inplace=True),
-            ) # reduce channel size before pooling
-            self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
-            # fusion_dim += union_out_dim
+
+        out_ch, union_out_dim = 256, 256
+        self.input_proj = nn.Sequential(
+            nn.Conv2d(in_channels, out_ch, kernel_size=1),
+            nn.ReLU(inplace=True),
+        ) # reduce channel size before pooling
+        self.visual_proj = make_fc(out_ch * (resolution**2), union_out_dim)
+        fusion_dim += union_out_dim
 
         if args.use_view6:
             out_ch, union_out_dim = 256, 256
@@ -954,26 +1137,13 @@ class RelationFeatureExtractor(nn.Module):
             self.visual_proj_view6 = make_fc(out_ch * (resolution**2), union_out_dim)
             fusion_dim += union_out_dim
 
-        if self.args.temporal2:
-            self.x_embed = nn.Parameter(torch.zeros([1, 256]))
-            self.y_embed = nn.Parameter(torch.zeros([1, 256]))
-            self.z_embed = nn.Parameter(torch.zeros([1, 256]))
-            self.temcls_token = nn.Parameter(torch.zeros([1, 1, 256]))
-
-            temcls_fusion_layer = TransformerEncoderLayer(256, 8)
-            temcls_fusion_norm = nn.LayerNorm(256)
-            self.temcls_fusion = TransformerEncoder(temcls_fusion_layer, 2, temcls_fusion_norm)
-            fusion_dim += 256
-
-
         # fusion
         self.fusion_fc = nn.Sequential(
             make_fc(fusion_dim, out_dim), nn.ReLU(),
             make_fc(out_dim, out_dim), nn.ReLU()
         )
 
-
-    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None, features_video=None):
+    def forward(self, rel_pairs, features, boxes, inst_reprs, idx, obj_label_logits=None, features_multiview=None):
         """pool feature for boxes on one image
             features: dxhxw
             boxes: Nx4 (cx_cy_wh, nomalized to 0-1)
@@ -1013,35 +1183,25 @@ class RelationFeatureExtractor(nn.Module):
             semantic_feats_tail = (obj_label_logits.softmax(-1) @ self.label_embedding.weight)[rel_pairs[:, 1]]
             relation_feats = torch.cat([relation_feats, semantic_feats_tail], dim=-1)
 
+        # union feature
 
-        if self.args.temporal2:
-            # H, W = features.tensors.shape[-2:] # stacked image size
-            h, w = (~features.mask[idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
-            proj_feature = self.input_proj(features.tensors[idx:idx+1])
-            proj_feature_video = self.input_proj(features_video.tensors.split(2)[idx])
-            scaled_union_boxes = torch.cat(
-                [
-                    torch.zeros((len(union_boxes),1)).to(device=union_boxes.device),
-                    union_boxes * torch.tensor([w,h,w,h]).to(device=union_boxes.device, dtype=union_boxes.dtype).unsqueeze(0),
-                ], dim=-1
-            )
-            union_visual_feats = roi_align(proj_feature, scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
-            union_visual_feats_before = roi_align(proj_feature_video[idx:idx+1], scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
-            union_visual_feats_after = roi_align(proj_feature_video[idx+1:], scaled_union_boxes,
-                                             output_size=self.resolution, sampling_ratio=2)
-            union_visual_feats = self.visual_proj(union_visual_feats.flatten(start_dim=1)) + self.x_embed
-            union_visual_feats_before = self.visual_proj(union_visual_feats_before.flatten(start_dim=1)) + self.y_embed
-            union_visual_feats_after = self.visual_proj(union_visual_feats_after.flatten(start_dim=1)) + self.z_embed
-            union_visual_feats_all = torch.cat([union_visual_feats.unsqueeze(0), union_visual_feats_before.unsqueeze(0), union_visual_feats_after.unsqueeze(0)], dim=0)
-            union_visual_feats_all_withtoken = torch.cat([self.temcls_token.repeat(1, union_visual_feats.shape[0], 1), union_visual_feats_all], dim=0)
-            fused_token = self.temcls_fusion(union_visual_feats_all_withtoken)[0]
-            relation_feats = torch.cat([relation_feats, fused_token], dim=-1)
-            # relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
+        # H, W = features.tensors.shape[-2:] # stacked image size
+        h, w = (~features.mask[idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
+        proj_feature = self.input_proj(features.tensors[idx:idx+1])
+        scaled_union_boxes = torch.cat(
+            [
+                torch.zeros((len(union_boxes),1)).to(device=union_boxes.device),
+                union_boxes * torch.tensor([w,h,w,h]).to(device=union_boxes.device, dtype=union_boxes.dtype).unsqueeze(0),
+            ], dim=-1
+        )
+        union_visual_feats_reg = roi_align(proj_feature, scaled_union_boxes, output_size=self.resolution, sampling_ratio=2)
+        union_visual_feats = self.visual_proj(union_visual_feats_reg.flatten(start_dim=1))
+        relation_feats = torch.cat([relation_feats, union_visual_feats], dim=-1)
 
         if self.args.use_view6:
             # H, W = features.tensors.shape[-2:] # stacked image size
-            h, w = (~features_multiview.mask[2::3][idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
-            proj_feature_view6 = self.input_proj_view6(features_multiview.tensors[2::3][idx:idx+1])
+            h, w = (~features_multiview.mask[idx]).nonzero(as_tuple=False).max(dim=0)[0] + 1 # mask: image area=False, pad area=True
+            proj_feature_view6 = self.input_proj_view6(features_multiview.tensors[idx:idx+1])
             scaled_view6_boxes = torch.cat(
                 [
                     torch.zeros((len(view6_boxes),1)).to(device=union_boxes.device),
@@ -1053,7 +1213,9 @@ class RelationFeatureExtractor(nn.Module):
             relation_feats = torch.cat([relation_feats, view6_visual_feats], dim=-1)
 
         x = self.fusion_fc(relation_feats)
-        return x
+
+        return x, union_visual_feats
+
 
     def extract_spatial_layout_feats(self, xyxy_boxes):
         box_center = torch.stack([(xyxy_boxes[:, 0] + xyxy_boxes[:, 2]) / 2, (xyxy_boxes[:, 1] + xyxy_boxes[:, 3]) / 2], dim=1)
